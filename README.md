@@ -23,7 +23,6 @@ bingoencasa/
 │   ├── nginx/           # Config Nginx
 │   └── php/             # Dockerfile PHP
 ├── migrations/          # Migraciones Doctrine
-├── plesk/               # Documentacion despliegue Plesk
 ├── public/              # Web root
 ├── src/                 # Codigo PHP
 │   ├── Command/         # Comandos de consola
@@ -126,23 +125,6 @@ php -S localhost:8000 -t public
 # Usar docker-compose.prod.yml
 docker compose -f docker-compose.prod.yml up -d
 ```
-
-### Plesk
-
-Ver documentacion detallada en [plesk/README-PLESK.md](plesk/README-PLESK.md)
-
-### Despliegue automatizado (recomendado)
-
-El script `deploy.sh` automatiza todo el proceso en Plesk (detecta PHP 8.5 y
-Node, instala dependencias, compila assets, migra, siembra el pool y calienta
-la caché):
-
-```bash
-git pull
-./deploy.sh
-```
-
-Variables opcionales: `SKIP_POOL=1` (no sembrar pool), `ROOMS` / `CARDS` (tamaño del pool).
 
 ### Pasos generales de produccion (manual)
 

@@ -8,6 +8,12 @@ Las entradas están escritas para el cliente: en lenguaje natural y sin detalles
 
 ---
 
+## [v1.01.09] - 2026-10-26
+
+### Eliminado
+
+- Se quitan la versión antigua de la web y la documentación y los scripts del alojamiento anterior (Plesk), que ya no se usaban.
+
 ## [v1.01.08] - 2026-10-26
 
 ### Corregido
