@@ -8,6 +8,12 @@ Las entradas están escritas para el cliente: en lenguaje natural y sin detalles
 
 ---
 
+## [v1.01.08] - 2026-10-26
+
+### Corregido
+
+- Vuelven el logo de BingoEnCasa y el de Thrax, que faltaban en la versión publicada del código.
+
 ## [v1.01.07] - 2026-10-26
 
 ### Seguridad
