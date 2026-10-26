@@ -1,0 +1,384 @@
+{% extends 'fiesta/base_fiesta.html.twig' %}
+
+{% block title %}Jugando - {{ room.code }}{% endblock %}
+
+{% block body %}
+<div id="app" class="flex-1 flex flex-col w-full max-w-lg mx-auto"></div>
+
+<script>
+const jugadorId = {{ player.id.toBase32|json_encode|raw }};
+const apodoPropio = {{ player.nickname|json_encode|raw }};
+const salaCodigo = {{ room.code|json_encode|raw }};
+
+let partidaId = null;
+let drawnBalls = [];
+let history = [];
+let currentBall = null;
+let cards = [];
+let players = [];
+let estado = null;          // último estado completo del servidor
+let view = 'espera';        // espera | jugando | comprobando | aviso | ganaste | fin
+let pendingClaim = null;    // tipo reclamado mientras esperamos confirmación
+
+let pollInterval = 1500;
+let errorCount = 0;
+let lobbyEtag = null;
+let estadoEtag = null;
+
+// ---------- móvil / nativo (Web APIs + Capacitor WebView) ----------
+let wakeLock = null;
+let ownNumbers = new Set();   // números presentes en mis cartones
+let prevBallSeen = null;
+
+function vibrate(pattern) {
+    try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (e) { /* no soportado */ }
+    // En la WebView de iOS (sin navigator.vibrate) usa Haptics de Capacitor.
+    try { if (window.bingoNative) window.bingoNative.haptic(Array.isArray(pattern) ? 'win' : 'tap'); } catch (e) {}
+}
+async function requestWake() {
+    try {
+        if ('wakeLock' in navigator && !wakeLock) {
+            wakeLock = await navigator.wakeLock.request('screen');
+            wakeLock.addEventListener('release', () => { wakeLock = null; });
+        }
+    } catch (e) { /* no soportado / sin permiso */ }
+    try { if (window.bingoNative) window.bingoNative.keepAwake(true); } catch (e) {}
+}
+function releaseWake() {
+    try { if (wakeLock) { wakeLock.release(); wakeLock = null; } } catch (e) {}
+    try { if (window.bingoNative) window.bingoNative.keepAwake(false); } catch (e) {}
+}
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && view === 'jugando') requestWake();
+});
+
+// ---------- helpers de cartón ----------
+function rowMissing(row) {
+    const nums = row.filter(n => n);
+    return nums.filter(n => !drawnBalls.includes(n)).length;
+}
+function rowFilled(row) {
+    return row.filter(n => n).length > 0;
+}
+function bestLineMissing() {
+    let best = 99;
+    cards.forEach(c => (c.cuadricula || []).forEach(r => { if (rowFilled(r)) best = Math.min(best, rowMissing(r)); }));
+    return best;
+}
+function bestBingoMissing() {
+    let best = 99;
+    cards.forEach(c => {
+        const nums = (c.cuadricula || []).flat().filter(n => n);
+        if (nums.length) best = Math.min(best, nums.filter(n => !drawnBalls.includes(n)).length);
+    });
+    return best;
+}
+function cardCompletesLinea(card) {
+    return (card.cuadricula || []).some(row => rowFilled(row) && rowMissing(row) === 0);
+}
+function cardCompletesBingo(card) {
+    const nums = (card.cuadricula || []).flat().filter(n => n);
+    return nums.length > 0 && nums.every(n => drawnBalls.includes(n));
+}
+function pickClaimCard(tipo) {
+    const completes = tipo === 'LINEA' ? cardCompletesLinea : cardCompletesBingo;
+    return cards.find(completes) || cards[0];
+}
+
+// ---------- componentes ----------
+// Todo texto que escribe un usuario (apodos) pasa por aquí antes de ir a innerHTML.
+function esc(value) {
+    return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function ball3D(num, size) {
+    const s = size || 96;
+    const fs = Math.round(s * 0.42);
+    return `<div class="f-ball f-pop rounded-full flex items-center justify-center font-black"
+        style="width:${s}px;height:${s}px;font-size:${fs}px;letter-spacing:-0.03em;font-family:'Space Grotesk',Inter,sans-serif;">${num || '?'}</div>`;
+}
+
+function avatar(name, sz) {
+    const s = sz || 32;
+    const initial = (name || '?').charAt(0).toUpperCase();
+    return `<div class="rounded-full flex items-center justify-center font-bold text-white flex-shrink-0"
+        style="width:${s}px;height:${s}px;font-size:${Math.round(s*0.45)}px;background:linear-gradient(135deg,#8b5cf6,#ec4899 55%,#22d3ee)">${esc(initial)}</div>`;
+}
+
+function cardHtml(card) {
+    const winningLine = cardCompletesLinea(card);
+    const rows = (card.cuadricula || []).map(row => {
+        const isWinRow = winningLine && rowFilled(row) && rowMissing(row) === 0;
+        const cells = row.map(num => {
+            if (!num) return `<div class="f-cell--empty rounded-md aspect-square"></div>`;
+            const marked = drawnBalls.includes(num);
+            const cls = isWinRow && marked ? 'f-cell--line' : (marked ? 'f-cell--marked' : 'f-cell');
+            return `<div class="${cls} rounded-md aspect-square flex items-center justify-center font-bold text-sm"
+                style="font-family:'Space Grotesk',Inter,sans-serif;">${num}</div>`;
+        }).join('');
+        return `<div class="grid grid-cols-9 gap-1">${cells}</div>`;
+    }).join('');
+    return `<div class="rounded-2xl p-3 flex flex-col gap-1" style="background:#13141b;border:1px solid rgba(255,255,255,0.06)">${rows}</div>`;
+}
+
+function objetivoPill() {
+    const obj = (estado && estado.premioObjetivo) || 'LINEA';
+    const color = obj === 'BINGO' ? '#ffce4d' : '#2fd4e3';
+    return `<span class="text-[11px] font-bold px-2 py-0.5 rounded-full" style="color:${color};background:rgba(255,255,255,0.06)">Objetivo: ${obj}</span>`;
+}
+
+function prizesBar() {
+    if (!estado || !(estado.boteTotal > 0)) return '';
+    return `<div class="rounded-xl p-3" style="background:#13141b;border:1px solid rgba(255,255,255,0.06)">
+        <div class="flex justify-center gap-6 text-sm">
+            <div class="text-center"><span class="text-white/40 text-xs">Línea</span><p class="font-bold" style="color:#2fd4e3">${estado.premioLinea.toFixed(0)}</p></div>
+            <div class="text-center"><span class="text-white/40 text-xs">Bingo</span><p class="font-bold" style="color:#ffce4d">${estado.premioBingo.toFixed(0)}</p></div>
+            <div class="text-center"><span class="text-white/40 text-xs">Bote</span><p class="font-bold" style="color:#3ed993">${estado.boteTotal.toFixed(0)}</p></div>
+        </div></div>`;
+}
+
+// ---------- pantallas ----------
+function renderEspera() {
+    const list = players.map(p => `<div class="flex flex-col items-center gap-1">${avatar(p, 44)}<span class="text-[11px] text-white/60 max-w-[64px] truncate">${esc(p)}</span></div>`).join('');
+    const nCartones = cards.length;
+    return `<div class="flex-1 flex flex-col items-center justify-center text-center p-6 gap-5">
+        <div class="f-spin rounded-full" style="width:56px;height:56px;border:4px solid rgba(47,212,227,0.25);border-top-color:#2fd4e3"></div>
+        <h1 class="text-2xl font-black">¡Estás dentro!</h1>
+        <div class="rounded-2xl px-5 py-3" style="background:#13141b;border:1px solid rgba(255,255,255,0.06)">
+            <p class="text-white/40 text-xs uppercase tracking-widest">Sala</p>
+            <p class="text-3xl font-black tracking-tight" style="font-family:'Space Grotesk',Inter,sans-serif">${salaCodigo}</p>
+        </div>
+        ${players.length ? `<div class="flex flex-wrap justify-center gap-3 max-w-sm">${list}</div>` : ''}
+        ${nCartones ? `<p class="text-white/50 text-sm">Tienes <span class="font-bold text-white">${nCartones}</span> cartón${nCartones > 1 ? 'es' : ''} reservado${nCartones > 1 ? 's' : ''}.</p>` : `<p class="text-white/40 text-sm">Esperando a que el anfitrión empiece la partida…</p>`}
+    </div>`;
+}
+
+function renderJugando() {
+    const lineMissing = bestLineMissing();
+    const bingoMissing = bestBingoMissing();
+    const obj = (estado && estado.premioObjetivo) || 'LINEA';
+
+    let faltaBar = '';
+    if (obj !== 'BINGO' && lineMissing === 1) {
+        faltaBar = `<div class="f-falta f-pulse rounded-xl p-3 text-center text-sm font-bold">¡Te falta 1 para LÍNEA!</div>`;
+    } else if (bingoMissing === 1) {
+        faltaBar = `<div class="f-falta f-pulse rounded-xl p-3 text-center text-sm font-bold">¡Te falta 1 para BINGO!</div>`;
+    }
+
+    const hist = history.slice(1, 6).map(n => `<div class="rounded-full flex items-center justify-center text-xs font-bold f-ball" style="width:34px;height:34px;font-family:'Space Grotesk',Inter,sans-serif">${n}</div>`).join('');
+    const cardsHtml = cards.length ? cards.map(cardHtml).join('') : `<p class="text-white/40 text-center py-6">Sin cartones asignados</p>`;
+
+    const lineaReady = obj !== 'BINGO' && lineMissing === 0;
+    const bingoReady = bingoMissing === 0;
+    const lineaDisabled = obj === 'BINGO';
+
+    return `<div class="flex-1 flex flex-col p-4 gap-4 overflow-y-auto pb-28">
+        <header class="rounded-2xl p-4 flex items-center justify-between" style="background:#13141b;border:1px solid rgba(255,255,255,0.06)">
+            <div><span class="text-white/40 text-xs">Sala</span><p class="font-bold">${salaCodigo}</p></div>
+            <span class="px-3 py-1 rounded-full text-xs font-bold" style="background:rgba(62,217,147,0.16);color:#8af0c0">EN JUEGO</span>
+            <div class="text-right"><span class="text-white/40 text-xs">Jugador</span><p class="font-bold">${esc(apodoPropio)}</p></div>
+        </header>
+        <div class="flex justify-center">${objetivoPill()}</div>
+        ${prizesBar()}
+        <div class="rounded-3xl p-6 flex flex-col items-center gap-3" style="background:#13141b;border:1px solid rgba(255,255,255,0.06)">
+            <p class="text-white/40 text-sm">Última bola</p>
+            ${ball3D(currentBall, 96)}
+            <div class="flex gap-2 flex-wrap justify-center">${hist}</div>
+        </div>
+        ${faltaBar}
+        <div class="flex flex-col gap-3">${cardsHtml}</div>
+    </div>
+    <div class="fixed bottom-0 left-0 right-0 px-4 pt-4 flex gap-3 max-w-lg mx-auto" style="background:linear-gradient(to top,#0a0b0f 60%,transparent);padding-bottom:max(1rem,env(safe-area-inset-bottom))">
+        <button onclick="reclamar('LINEA')" ${lineaDisabled ? 'disabled' : ''} class="f-btn f-btn-linea flex-1 rounded-2xl py-4 font-bold ${lineaReady ? 'f-pulse' : ''}">¡LÍNEA!</button>
+        <button onclick="reclamar('BINGO')" class="f-btn f-btn-bingo flex-1 rounded-2xl py-4 font-bold ${bingoReady ? 'f-pulse' : ''}">¡BINGO!</button>
+    </div>`;
+}
+
+function renderComprobando() {
+    const tipo = (estado && estado.reclamacionActiva && estado.reclamacionActiva.tipo) || pendingClaim || 'LÍNEA';
+    return `<div class="f-overlay flex-1 flex flex-col items-center justify-center text-center p-8 gap-5">
+        <div class="f-spin rounded-full" style="width:60px;height:60px;border:4px solid rgba(255,176,32,0.25);border-top-color:#ffb020"></div>
+        <h2 class="text-2xl font-black">Has cantado ¡${tipo}!</h2>
+        <p class="text-white/55 max-w-xs">El anfitrión está revisando tu cartón. Un momento…</p>
+    </div>`;
+}
+
+function renderAviso() {
+    const rc = estado.reclamacionActiva;
+    const color = rc.tipo === 'BINGO' ? '#ffce4d' : '#2fd4e3';
+    return `<div class="f-overlay flex-1 flex flex-col items-center justify-center text-center p-8 gap-5">
+        ${avatar(rc.apodo, 64)}
+        <h2 class="text-2xl font-black"><span style="color:${color}">${esc(rc.apodo)}</span> canta ¡${rc.tipo}!</h2>
+        <p class="text-white/55 max-w-xs">El anfitrión lo está comprobando. ${rc.tipo === 'LINEA' ? 'Seguimos para bingo.' : ''}</p>
+    </div>`;
+}
+
+function renderGanaste() {
+    const g = estado.ganador;
+    const premio = g && g.premio > 0 ? ` · ${Number(g.premio).toFixed(0)} puntos` : '';
+    launchConfetti();
+    return `<div class="f-overlay flex-1 flex flex-col items-center justify-center text-center p-8 gap-5">
+        ${ball3D(currentBall || '★', 120)}
+        <h1 class="text-4xl font-black" style="color:#ffce4d">¡BINGO!</h1>
+        <p class="text-xl font-bold">¡Has ganado!${premio}</p>
+    </div>`;
+}
+
+function renderFin() {
+    const g = estado.ganador;
+    const ganadorHtml = g ? `<div class="flex items-center gap-3 rounded-2xl px-5 py-3" style="background:#13141b;border:1px solid rgba(255,255,255,0.06)">
+        ${avatar(g.apodo, 44)}<div class="text-left"><p class="font-bold">${esc(g.apodo)}</p><p class="text-sm" style="color:#ffce4d">BINGO</p></div></div>` : '';
+    return `<div class="flex-1 flex flex-col items-center justify-center text-center p-8 gap-5">
+        <div class="text-5xl">🏆</div>
+        <h1 class="text-2xl font-black">Partida finalizada</h1>
+        ${ganadorHtml}
+        <a href="/" class="mt-4 rounded-2xl px-8 py-3.5 font-bold text-white" style="background:linear-gradient(135deg,#8b5cf6,#ec4899 55%,#22d3ee)">Volver al inicio</a>
+    </div>`;
+}
+
+function render() {
+    const app = document.getElementById('app');
+    let html;
+    switch (view) {
+        case 'jugando': html = renderJugando(); break;
+        case 'comprobando': html = renderComprobando(); break;
+        case 'aviso': html = renderAviso(); break;
+        case 'ganaste': html = renderGanaste(); break;
+        case 'fin': html = renderFin(); break;
+        default: html = renderEspera();
+    }
+    app.innerHTML = html;
+}
+
+// ---------- confeti ----------
+let confettiDone = false;
+function launchConfetti() {
+    if (confettiDone) return;
+    confettiDone = true;
+    vibrate([0, 90, 50, 90, 50, 180]);
+    const colors = ['#f25dad', '#2fd4e3', '#ffce4d', '#3ed993', '#8b5cf6'];
+    for (let i = 0; i < 60; i++) {
+        const p = document.createElement('div');
+        p.className = 'f-confetti';
+        p.style.left = Math.random() * 100 + 'vw';
+        p.style.background = colors[i % colors.length];
+        p.style.animationDuration = (1.6 + Math.random() * 1.8) + 's';
+        p.style.animationDelay = (Math.random() * 0.5) + 's';
+        document.body.appendChild(p);
+        setTimeout(() => p.remove(), 3600);
+    }
+}
+
+// ---------- estado / vista ----------
+function deriveView() {
+    if (!estado) return 'espera';
+    const g = estado.ganador;
+    const rc = estado.reclamacionActiva;
+
+    if (g && g.jugadorId === jugadorId) return 'ganaste';
+    if (estado.estadoPartida === 'FINALIZADA') return 'fin';
+    if (rc && rc.jugadorId === jugadorId) return 'comprobando';
+    if (pendingClaim && !rc) return 'comprobando'; // optimista, aún no llegó al servidor
+    if (rc) return 'aviso';
+    if (estado.estadoPartida === 'EN_JUEGO') { pendingClaim = null; return 'jugando'; }
+    return 'espera';
+}
+
+async function reclamar(tipo) {
+    if (!partidaId || cards.length === 0 || pendingClaim) return;
+    const card = pickClaimCard(tipo);
+    pendingClaim = tipo;
+    vibrate(40);
+    view = 'comprobando';
+    render();
+    try {
+        const res = await fetch('/api/reclamaciones', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ partidaId, jugadorId, cartonId: card.cartonId, tipo })
+        });
+        const data = await res.json();
+        if (!data.exito) {
+            pendingClaim = null;
+            view = deriveView();
+            render();
+        }
+    } catch (e) {
+        pendingClaim = null;
+        view = deriveView();
+        render();
+    }
+}
+
+async function loadCards() {
+    if (!partidaId) return;
+    try {
+        const res = await fetch(`/api/jugadores/${jugadorId}/cartones?partidaId=${partidaId}`);
+        const data = await res.json();
+        if (data.exito && data.cartones) {
+            cards = data.cartones;
+            ownNumbers = new Set(cards.flatMap(c => (c.cuadricula || []).flat().filter(n => n)));
+        }
+    } catch (e) { /* reintenta en el próximo ciclo */ }
+}
+
+async function refreshState() {
+    try {
+        const lobbyHeaders = lobbyEtag ? { 'If-None-Match': lobbyEtag } : {};
+        const lobbyRes = await fetch(`/api/salas/${salaCodigo}/lobby`, { headers: lobbyHeaders });
+
+        if (lobbyRes.status === 429) { pollInterval = Math.min(pollInterval * 2, 10000); return; }
+        if (lobbyRes.status !== 304) {
+            lobbyEtag = lobbyRes.headers.get('ETag');
+            const lobbyData = await lobbyRes.json();
+            if (lobbyData.exito) {
+                players = (lobbyData.jugadores || []).map(j => j.apodo);
+                partidaId = lobbyData.partidaActiva ? lobbyData.partidaActiva.id : null;
+            }
+        }
+
+        if (partidaId) {
+            if (cards.length === 0) await loadCards();
+            const estadoHeaders = estadoEtag ? { 'If-None-Match': estadoEtag } : {};
+            const partidaRes = await fetch(`/api/partidas/${partidaId}/estado`, { headers: estadoHeaders });
+            if (partidaRes.status !== 304) {
+                estadoEtag = partidaRes.headers.get('ETag');
+                const data = await partidaRes.json();
+                if (data.exito) {
+                    estado = data;
+                    drawnBalls = data.bolasSacadas || [];
+                    history = data.historial || [];
+                    currentBall = data.bolaActual || null;
+                    // Vibra si la bola recién cantada está en alguno de mis cartones.
+                    if (currentBall && currentBall !== prevBallSeen) {
+                        prevBallSeen = currentBall;
+                        if (ownNumbers.has(currentBall)) vibrate(80);
+                    }
+                }
+            }
+        } else {
+            estado = null;
+        }
+
+        const next = deriveView();
+        view = next;
+        if (view === 'jugando') requestWake(); else releaseWake();
+        render();
+
+        errorCount = 0;
+        pollInterval = 1500;
+    } catch (e) {
+        errorCount++;
+        pollInterval = Math.min(1500 * Math.pow(1.5, errorCount), 10000);
+    }
+}
+
+function schedulePoll() {
+    setTimeout(() => { refreshState().finally(schedulePoll); }, pollInterval);
+}
+
+render();
+refreshState();
+schedulePoll();
+</script>
+{% endblock %}

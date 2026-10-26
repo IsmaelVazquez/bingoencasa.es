@@ -1,0 +1,10 @@
+@import "tailwindcss";
+@source "../**/*.{js,jsx}";
+@source "../../templates/**/*.twig";
+
+html, body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+}

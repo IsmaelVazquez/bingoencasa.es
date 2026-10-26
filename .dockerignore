@@ -1,0 +1,13 @@
+.git
+.gitignore
+.codegraph
+.idea
+.vscode
+node_modules
+vendor
+var
+public/build
+public/bundles
+.env
+.env.local
+.env.*.local

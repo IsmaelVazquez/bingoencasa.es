@@ -1,0 +1,15 @@
+{
+  "appId": "es.thrax.bingoencasa",
+  "appName": "BingoEnCasa",
+  "webDir": "public/build",
+  "backgroundColor": "#0a0b0f",
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#0a0b0f"
+    }
+  }
+}

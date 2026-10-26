@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="es">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        {% if app.user %}<meta name="csrf-token" content="{{ csrf_token('admin') }}">{% endif %}
+        <title>{% block title %}Panel admin{% endblock %}</title>
+        {% block stylesheets %}
+            {{ vite_entry_link_tags('admin') }}
+        {% endblock %}
+    </head>
+    <body class="bg-slate-50 text-slate-900">
+        {% block body %}{% endblock %}
+        {% block javascripts %}
+            {{ vite_entry_script_tags('admin') }}
+        {% endblock %}
+    </body>
+</html>

@@ -1,0 +1,70 @@
+#Protect Directory
+#AuthName "Introduza sus datos"
+#AuthType Basic
+#AuthUserFile /var/www/vhosts/devenum.es/httpdocs/.htpasswd
+#Require valid-user
+
+DirectoryIndex index.php
+
+# Ensure mod_rewrite is used for Symfony's URL handling.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Determine the RewriteBase automatically and set it as an environment variable.
+    RewriteCond %{REQUEST_URI}::$1 ^(/.+)/(.*)::\2$
+    RewriteRule ^(.*) - [E=BASE:%1]
+
+    # Sets the HTTP_AUTHORIZATION header that might be removed by Apache.
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule ^ - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+    # Redirect to URI without front controller to prevent duplicate content.
+    RewriteCond %{ENV:REDIRECT_STATUS} ^$
+    RewriteRule ^index\.php(?:/(.*)|$) %{ENV:BASE}/$1 [R=301,L]
+
+    # Serve existing files directly and do not pass the request to Symfony.
+    RewriteCond %{REQUEST_FILENAME} -f
+    RewriteRule ^ - [L]
+
+    # Redirect all non-file requests to the front controller.
+    RewriteRule ^ %{ENV:BASE}/index.php [L]
+</IfModule>
+
+# Deny access to hidden files and directories.
+<IfModule mod_autoindex.c>
+    Options -Indexes
+</IfModule>
+
+# Deny access to files that might expose sensitive information.
+<FilesMatch "\.(env|sh|bat|git|ht|svn|md)$">
+    Require all denied
+</FilesMatch>
+
+# Configuration for running Symfony under FastCGI with PHP 8.
+# The exact path to the PHP-FPM socket might differ based on your installation.
+<IfModule mod_fcgid.c>
+    <FilesMatch \.php$>
+        SetHandler "proxy:unix:/var/run/php/php8.2-fpm.sock|fcgi://localhost"
+    </FilesMatch>
+</IfModule>
+
+# Alternative configuration for running Symfony under php-fpm in a reverse proxy setup with PHP 8.
+<IfModule mod_proxy_fcgi.c>
+    <FilesMatch \.php$>
+        SetHandler "proxy:fcgi://localhost:9000"
+    </FilesMatch>
+</IfModule>
+
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType image/jpg "access plus 1 year"
+  ExpiresByType image/jpeg "access plus 1 year"
+  ExpiresByType image/gif "access plus 1 year"
+  ExpiresByType image/png "access plus 1 year"
+  ExpiresByType text/css "access plus 1 month"
+  ExpiresByType application/pdf "access plus 1 month"
+  ExpiresByType application/javascript "access plus 1 month"
+  ExpiresByType application/x-javascript "access plus 1 month"
+  ExpiresByType application/x-shockwave-flash "access plus 1 month"
+  ExpiresDefault "access plus 2 days"
+</IfModule>

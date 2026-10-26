@@ -1,0 +1,13 @@
+framework:
+    rate_limiter:
+        # Salas que puede ocupar una misma IP. Evita que alguien vacíe el pool.
+        fiesta_crear_sala:
+            policy: sliding_window
+            limit: 20
+            interval: '1 hour'
+        # PIN fallidos por IP y sala. Solo cuentan los fallos, así que los
+        # invitados de una misma wifi pueden entrar todos sin problema.
+        fiesta_pin_fallido:
+            policy: sliding_window
+            limit: 10
+            interval: '15 minutes'

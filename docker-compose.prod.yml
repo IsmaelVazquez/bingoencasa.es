@@ -1,0 +1,46 @@
+# Compose de producción (Coolify, buildpack dockercompose).
+# El código va horneado en la imagen. Traefik enruta el servicio `web`
+# y pone el certificado. Postgres 18 es un recurso aparte de Coolify:
+# php entra en su red (POSTGRES_NETWORK) y recibe DATABASE_URL entera.
+# El desarrollo local sigue en docker-compose.yml.
+services:
+    web:
+        build:
+            context: .
+            dockerfile: docker/Dockerfile.prod
+            target: nginx
+        depends_on:
+            php:
+                condition: service_started
+        environment:
+            TZ: Europe/Madrid
+        healthcheck:
+            test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+            interval: 30s
+            timeout: 5s
+            retries: 5
+            start_period: 120s
+        restart: unless-stopped
+
+    php:
+        build:
+            context: .
+            dockerfile: docker/Dockerfile.prod
+            target: php
+        networks:
+            default: {}
+            postgres_net: {}
+        environment:
+            TZ: Europe/Madrid
+            APP_ENV: prod
+            APP_DEBUG: "0"
+            APP_SECRET: "${APP_SECRET:?APP_SECRET must be set}"
+            DATABASE_URL: "${DATABASE_URL:?DATABASE_URL must be set}"
+            TRUSTED_PROXIES: PRIVATE_SUBNETS
+        restart: unless-stopped
+
+networks:
+    default:
+    postgres_net:
+        external: true
+        name: "${POSTGRES_NETWORK:?POSTGRES_NETWORK must be set}"

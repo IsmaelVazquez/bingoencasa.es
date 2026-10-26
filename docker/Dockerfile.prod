@@ -1,0 +1,50 @@
+# syntax=docker/dockerfile:1
+# Imagen de producción para Coolify. Dos targets del mismo build:
+#   php   -> php-fpm (migraciones y warmup en el entrypoint)
+#   nginx -> solo public/, Traefik termina TLS delante
+# El desarrollo sigue en docker/php/Dockerfile y docker-compose.yml.
+
+FROM node:26-alpine AS assets
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+FROM php:8.5-fpm AS php-base
+ENV COMPOSER_ALLOW_SUPERUSER=1
+ADD https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions /usr/local/bin/
+RUN chmod +x /usr/local/bin/install-php-extensions \
+    && install-php-extensions intl pdo_pgsql zip opcache mbstring xml \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client unzip \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+
+FROM php-base AS vendor
+WORKDIR /app
+ENV APP_ENV=prod
+COPY composer.json composer.lock symfony.lock ./
+RUN composer install --no-dev --no-scripts --no-autoloader --no-interaction --no-progress
+COPY . .
+COPY --from=assets /app/public/build public/build
+RUN composer dump-autoload --optimize --classmap-authoritative --no-dev \
+    && mkdir -p var/cache var/log
+
+FROM php-base AS php
+WORKDIR /var/www/html
+COPY --from=vendor /app /var/www/html
+COPY docker/php/conf.d/prod.ini /usr/local/etc/php/conf.d/prod.ini
+COPY docker/entrypoint.prod.sh /usr/local/bin/entrypoint.prod.sh
+# Symfony exige un .env aunque la configuración real llegue por el entorno.
+RUN printf 'APP_ENV=prod\nAPP_DEBUG=0\n' > .env \
+    && chmod +x /usr/local/bin/entrypoint.prod.sh \
+    && mkdir -p var/cache var/log \
+    && chown -R www-data:www-data var
+ENTRYPOINT ["entrypoint.prod.sh"]
+CMD ["php-fpm"]
+
+FROM nginx:1.30-alpine AS nginx
+RUN apk add --no-cache wget
+COPY docker/nginx/nginx.prod.conf /etc/nginx/conf.d/default.conf
+COPY --from=vendor /app/public /var/www/html/public

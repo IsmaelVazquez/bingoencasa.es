@@ -1,0 +1,10 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}BingoEnCasa.es | TV Experience{% endblock %}
+
+{# Render React at #root; provide a fallback when JS is disabled #}
+{% block body %}
+    <noscript>
+        <p class="text-white/80 text-center mt-8">Activa JavaScript para cargar la experiencia TV.</p>
+    </noscript>
+{% endblock %}

@@ -1,0 +1,69 @@
+{% extends 'fiesta/base_fiesta.html.twig' %}
+
+{% block title %}Unirse a Sala - Modo Fiesta{% endblock %}
+
+{% block body %}
+<div class="flex-1 flex flex-col items-center justify-center p-6">
+    <div class="glass rounded-3xl p-8 w-full max-w-md">
+        <h1 class="text-3xl font-bold text-center mb-8">Unirse a Sala</h1>
+        
+        {% if error %}
+        <div class="bg-red-500/20 border border-red-500/30 rounded-xl p-4 mb-6 text-center text-red-200">
+            {{ error }}
+        </div>
+        {% endif %}
+        
+        <form method="POST" class="space-y-6">
+            <div>
+                <label for="codigo" class="block text-sm font-medium text-white/70 mb-2">Código de Sala</label>
+                <input 
+                    type="text" 
+                    id="codigo" 
+                    name="codigo" 
+                    placeholder="Ej: SUERTE42" 
+                    value="{{ codigoFromQr }}"
+                    class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-4 text-lg text-center font-mono uppercase tracking-widest focus:outline-none focus:border-cyan-500 transition-colors placeholder:text-white/30"
+                    required
+                >
+            </div>
+            
+            <div>
+                <label for="pin" class="block text-sm font-medium text-white/70 mb-2">PIN (4 dígitos)</label>
+                <input 
+                    type="text" 
+                    id="pin" 
+                    name="pin" 
+                    placeholder="0000" 
+                    value="{{ pinFromQr }}"
+                    maxlength="4"
+                    pattern="[0-9]{4}"
+                    inputmode="numeric"
+                    class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-4 text-2xl text-center font-mono tracking-[0.5em] focus:outline-none focus:border-yellow-500 transition-colors placeholder:text-white/30"
+                    required
+                >
+            </div>
+            
+            <div>
+                <label for="apodo" class="block text-sm font-medium text-white/70 mb-2">Tu Apodo</label>
+                <input 
+                    type="text" 
+                    id="apodo" 
+                    name="apodo" 
+                    placeholder="Ej: María" 
+                    maxlength="30"
+                    class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-4 text-lg focus:outline-none focus:border-cyan-500 transition-colors placeholder:text-white/30"
+                    required
+                >
+            </div>
+            
+            <button type="submit" class="w-full glass-button rounded-xl py-4 text-lg font-bold bg-gradient-to-r from-cyan-500/20 to-blue-500/20 border-cyan-500/30 hover:border-cyan-400">
+                Unirse
+            </button>
+        </form>
+        
+        <a href="/" class="block text-center mt-6 text-white/40 hover:text-white transition-colors text-sm">
+            ← Volver al inicio
+        </a>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="es" data-turbo="false">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>{% block title %}Pantalla TV{% endblock %}</title>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;800;900&display=swap" rel="stylesheet">
+        {% block stylesheets %}
+            {{ vite_entry_link_tags('app') }}
+        {% endblock %}
+    </head>
+    <body class="text-white/90 antialiased overflow-hidden selection:bg-pink-500/30">
+        <div id="root"></div>
+        {% block javascripts %}
+            {{ vite_entry_script_tags('app') }}
+        {% endblock %}
+    </body>
+</html>

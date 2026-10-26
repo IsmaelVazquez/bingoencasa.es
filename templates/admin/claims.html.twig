@@ -1,0 +1,46 @@
+{% extends 'admin/base_admin.html.twig' %}
+
+{% block title %}Reclamaciones{% endblock %}
+
+{% block body %}
+    {% include 'admin/_nav.html.twig' %}
+
+    <section class="mx-auto max-w-6xl px-6 pb-12">
+        <div class="mb-6">
+            <p class="text-sm font-semibold uppercase tracking-widest text-indigo-600">Reclamaciones</p>
+            <h1 class="text-3xl font-bold text-slate-900">Histórico</h1>
+            <p class="text-slate-600">Listado básico de reclamaciones pendientes o revisadas.</p>
+        </div>
+
+        <div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <table class="min-w-full divide-y divide-slate-200 text-sm">
+                <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-widest text-slate-500">
+                    <tr>
+                        <th class="px-4 py-3">Tipo</th>
+                        <th class="px-4 py-3">Estado</th>
+                        <th class="px-4 py-3">Jugador</th>
+                        <th class="px-4 py-3">Juego</th>
+                        <th class="px-4 py-3">Fecha</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                    {% for claim in claims %}
+                        <tr class="hover:bg-slate-50">
+                            <td class="px-4 py-3 font-semibold text-slate-900">{{ claim.type|capitalize }}</td>
+                            <td class="px-4 py-3">
+                                <span class="rounded-full px-2 py-1 text-xs font-semibold {{ claim.status == 'pending' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800' }}">{{ claim.status|capitalize }}</span>
+                            </td>
+                            <td class="px-4 py-3 text-slate-700">{{ claim.player ? claim.player.nickname : 'Jugador' }}</td>
+                            <td class="px-4 py-3 font-mono text-indigo-700">{{ claim.game ? claim.game.id : 'Juego' }}</td>
+                            <td class="px-4 py-3 text-slate-500">{{ claim.createdAt|date('d/m/Y H:i') }}</td>
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td class="px-4 py-4 text-center text-slate-500" colspan="5">Aún no hay reclamaciones.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+{% endblock %}

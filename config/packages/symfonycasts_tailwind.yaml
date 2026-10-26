@@ -1,0 +1,3 @@
+symfonycasts_tailwind:
+    # Misma CLI que Vite (@tailwindcss/cli), para no descargar otro binario.
+    binary: 'node_modules/.bin/tailwindcss'

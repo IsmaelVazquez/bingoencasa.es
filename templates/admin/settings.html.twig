@@ -1,0 +1,101 @@
+{% extends 'admin/base_admin.html.twig' %}
+
+{% block title %}Configuración{% endblock %}
+
+{% block body %}
+    {% include 'admin/_nav.html.twig' %}
+
+    <section class="mx-auto max-w-4xl px-6 pb-12">
+        <div class="mb-8 space-y-1">
+            <p class="text-sm font-semibold uppercase tracking-widest text-indigo-600">Ajustes</p>
+            <h1 class="text-3xl font-bold text-slate-900">Configuración del Sistema</h1>
+            <p class="text-slate-600">Habilita o deshabilita los modos de juego disponibles.</p>
+        </div>
+
+        <div class="space-y-4">
+            <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-4">
+                        <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-100 text-2xl">
+                            📺
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-bold text-slate-900">Modo Bombo</h3>
+                            <p class="text-sm text-slate-500">Bingo clásico para proyectar en TV con cartones físicos</p>
+                        </div>
+                    </div>
+                    <label class="relative inline-flex cursor-pointer items-center">
+                        <input type="checkbox" 
+                               id="toggle_bombo" 
+                               class="peer sr-only" 
+                               {{ modoBombo ? 'checked' : '' }}
+                               data-key="modo_bombo_enabled"
+                               onchange="toggleSetting(this)">
+                        <div class="peer h-7 w-14 rounded-full bg-slate-200 after:absolute after:left-[4px] after:top-[4px] after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-indigo-600 peer-checked:after:translate-x-7 peer-focus:ring-4 peer-focus:ring-indigo-300"></div>
+                    </label>
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-4">
+                        <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-pink-100 text-2xl">
+                            🎉
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-bold text-slate-900">Modo Fiesta</h3>
+                            <p class="text-sm text-slate-500">Multijugador online con salas y QR</p>
+                        </div>
+                    </div>
+                    <label class="relative inline-flex cursor-pointer items-center">
+                        <input type="checkbox" 
+                               id="toggle_fiesta" 
+                               class="peer sr-only" 
+                               {{ modoFiesta ? 'checked' : '' }}
+                               data-key="modo_fiesta_enabled"
+                               onchange="toggleSetting(this)">
+                        <div class="peer h-7 w-14 rounded-full bg-slate-200 after:absolute after:left-[4px] after:top-[4px] after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-pink-600 peer-checked:after:translate-x-7 peer-focus:ring-4 peer-focus:ring-pink-300"></div>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <div id="status-message" class="mt-6 hidden rounded-lg p-4 text-center font-semibold"></div>
+    </section>
+
+    <script>
+        async function toggleSetting(checkbox) {
+            const key = checkbox.dataset.key;
+            const enabled = checkbox.checked ? '1' : '0';
+            const statusEl = document.getElementById('status-message');
+            
+            try {
+                const formData = new FormData();
+                formData.append('key', key);
+                formData.append('enabled', enabled);
+                
+                const response = await fetch('{{ path("app_admin_settings_toggle") }}', {
+                    method: 'POST',
+                    headers: { 'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content },
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.exito) {
+                    statusEl.className = 'mt-6 rounded-lg p-4 text-center font-semibold bg-green-100 text-green-800';
+                    statusEl.textContent = `Configuración actualizada correctamente`;
+                    statusEl.classList.remove('hidden');
+                    setTimeout(() => statusEl.classList.add('hidden'), 3000);
+                } else {
+                    throw new Error(data.error);
+                }
+            } catch (error) {
+                statusEl.className = 'mt-6 rounded-lg p-4 text-center font-semibold bg-red-100 text-red-800';
+                statusEl.textContent = 'Error al guardar: ' + error.message;
+                statusEl.classList.remove('hidden');
+                checkbox.checked = !checkbox.checked;
+            }
+        }
+    </script>
+{% endblock %}

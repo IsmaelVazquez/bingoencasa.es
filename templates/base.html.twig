@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="es" data-turbo="false">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+        <title>{% block title %}BingoEnCasa.es | TV Experience{% endblock %}</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+        {% block stylesheets %}
+            {{ vite_entry_link_tags('app') }}
+        {% endblock %}
+    </head>
+    <body class="text-white/90 antialiased overflow-hidden selection:bg-pink-500/30">
+        <div id="root">
+            <div class="flex items-center justify-center min-h-screen bg-black text-white">
+                <p class="animate-pulse">Cargando BingoEnCasa.es...</p>
+            </div>
+        </div>
+        {% block body %}{% endblock %}
+        {% block javascripts %}
+            {{ vite_entry_script_tags('app') }}
+        {% endblock %}
+    </body>
+</html>

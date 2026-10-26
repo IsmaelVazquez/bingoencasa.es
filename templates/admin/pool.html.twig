@@ -1,0 +1,246 @@
+{% extends 'admin/base_admin.html.twig' %}
+
+{% block title %}Gestión del Pool{% endblock %}
+
+{% block body %}
+    {% include 'admin/_nav.html.twig' %}
+
+    <section class="mx-auto max-w-6xl px-6 pb-12">
+        <div class="mb-8 space-y-1">
+            <p class="text-sm font-semibold uppercase tracking-widest text-indigo-600">Recursos</p>
+            <h1 class="text-3xl font-bold text-slate-900">Gestión del Pool</h1>
+            <p class="text-slate-600">Administra las salas y cartones pre-generados del sistema.</p>
+        </div>
+
+        <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
+            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <p class="text-sm font-semibold text-slate-500">Salas Totales</p>
+                <p class="mt-2 text-3xl font-black text-slate-900">{{ totalRooms }}</p>
+                <p class="text-xs text-slate-500">En el pool</p>
+            </div>
+            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <p class="text-sm font-semibold text-slate-500">Salas Disponibles</p>
+                <p class="mt-2 text-3xl font-black text-emerald-600">{{ availableRooms }}</p>
+                <p class="text-xs text-slate-500">Listas para usar</p>
+            </div>
+            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <p class="text-sm font-semibold text-slate-500">Cartones Totales</p>
+                <p class="mt-2 text-3xl font-black text-slate-900">{{ totalCardTemplates }}</p>
+                <p class="text-xs text-slate-500">Pre-generados</p>
+            </div>
+            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <p class="text-sm font-semibold text-slate-500">Cartones Disponibles</p>
+                <p class="mt-2 text-3xl font-black text-emerald-600">{{ availableCardTemplates }}</p>
+                <p class="text-xs text-slate-500">Listos para asignar</p>
+            </div>
+        </div>
+
+        <div class="grid gap-6 lg:grid-cols-3 mb-8">
+            <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                <h3 class="text-lg font-bold text-slate-900 mb-4">Acciones Rápidas</h3>
+                <div class="space-y-3">
+                    <button type="button" 
+                            data-action="click->pool#releaseStale"
+                            class="w-full rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600 transition">
+                        Liberar Salas Inactivas (24h)
+                    </button>
+                    <button type="button" 
+                            data-action="click->pool#releaseAll"
+                            class="w-full rounded-lg bg-red-500 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600 transition">
+                        Liberar Todo el Pool
+                    </button>
+                </div>
+                <p class="mt-4 text-xs text-slate-500">
+                    Liberar salas devuelve los recursos al pool para que puedan ser reutilizados.
+                </p>
+            </div>
+
+            <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-2">
+                <h3 class="text-lg font-bold text-slate-900 mb-2">Uso del Pool</h3>
+                <div class="space-y-4">
+                    <div>
+                        <div class="flex justify-between text-sm mb-1">
+                            <span class="text-slate-600">Salas en uso</span>
+                            <span class="font-semibold">{{ usedRooms }} / {{ totalRooms }}</span>
+                        </div>
+                        <div class="w-full bg-slate-200 rounded-full h-3">
+                            <div class="bg-indigo-600 h-3 rounded-full" style="width: {{ totalRooms > 0 ? (usedRooms / totalRooms * 100) : 0 }}%"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-sm mb-1">
+                            <span class="text-slate-600">Cartones en uso</span>
+                            <span class="font-semibold">{{ usedCardTemplates }} / {{ totalCardTemplates }}</span>
+                        </div>
+                        <div class="w-full bg-slate-200 rounded-full h-3">
+                            <div class="bg-emerald-600 h-3 rounded-full" style="width: {{ totalCardTemplates > 0 ? (usedCardTemplates / totalCardTemplates * 100) : 0 }}%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm" data-controller="pool">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h3 class="text-lg font-bold text-slate-900">Salas Activas</h3>
+                    <p class="text-sm text-slate-500">Salas actualmente en uso</p>
+                </div>
+                <span class="rounded-full bg-indigo-100 px-3 py-1 text-sm font-semibold text-indigo-700">{{ usedRooms }} activas</span>
+            </div>
+
+            {% if activeRooms is not empty %}
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-sm">
+                        <thead class="border-b border-slate-200 text-slate-500">
+                            <tr>
+                                <th class="pb-3 font-semibold">Código</th>
+                                <th class="pb-3 font-semibold">Nombre</th>
+                                <th class="pb-3 font-semibold">PIN</th>
+                                <th class="pb-3 font-semibold">Jugadores</th>
+                                <th class="pb-3 font-semibold">Último Uso</th>
+                                <th class="pb-3 font-semibold text-right">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            {% for room in activeRooms %}
+                                <tr data-room-id="{{ room.id }}">
+                                    <td class="py-3 font-mono font-semibold text-slate-900">{{ room.code }}</td>
+                                    <td class="py-3 text-slate-700">{{ room.name }}</td>
+                                    <td class="py-3">
+                                        <span class="room-pin font-mono bg-slate-100 px-2 py-1 rounded">{{ room.pin }}</span>
+                                    </td>
+                                    <td class="py-3 text-slate-600">{{ room.players|length }} / {{ room.maxPlayers }}</td>
+                                    <td class="py-3 text-slate-500">
+                                        {% if room.lastUsedAt %}
+                                            {{ room.lastUsedAt|date('d/m/Y H:i') }}
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+                                    <td class="py-3 text-right space-x-2">
+                                        <button type="button" 
+                                                data-action="click->pool#resetPin"
+                                                data-pool-room-id-param="{{ room.id }}"
+                                                class="rounded bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-200 transition">
+                                            Nuevo PIN
+                                        </button>
+                                        <button type="button" 
+                                                data-action="click->pool#releaseRoom"
+                                                data-pool-room-id-param="{{ room.id }}"
+                                                class="rounded bg-red-100 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-200 transition">
+                                            Liberar
+                                        </button>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <p class="py-8 text-center text-slate-500">No hay salas activas en este momento. Todas las salas están disponibles en el pool.</p>
+            {% endif %}
+        </div>
+    </section>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const poolController = {
+                async resetPin(roomId) {
+                    if (!confirm('¿Cambiar el PIN de esta sala? Los jugadores actuales necesitarán el nuevo PIN.')) return;
+                    
+                    try {
+                        const response = await fetch(`/admin/pool/room/${roomId}/reset-pin`, { method: 'POST', headers: { 'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content } });
+                        const data = await response.json();
+                        
+                        if (data.exito) {
+                            const row = document.querySelector(`tr[data-room-id="${roomId}"]`);
+                            if (row) {
+                                row.querySelector('.room-pin').textContent = data.nuevoPin;
+                            }
+                            alert('PIN actualizado: ' + data.nuevoPin);
+                        } else {
+                            alert('Error: ' + data.error);
+                        }
+                    } catch (e) {
+                        alert('Error de conexión');
+                    }
+                },
+
+                async releaseRoom(roomId) {
+                    if (!confirm('¿Liberar esta sala? Se eliminarán todos los jugadores y la sala volverá al pool.')) return;
+                    
+                    try {
+                        const response = await fetch(`/admin/pool/room/${roomId}/release`, { method: 'POST', headers: { 'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content } });
+                        const data = await response.json();
+                        
+                        if (data.exito) {
+                            const row = document.querySelector(`tr[data-room-id="${roomId}"]`);
+                            if (row) row.remove();
+                            alert(`Sala liberada. ${data.cartonesLiberados} cartones devueltos al pool.`);
+                            location.reload();
+                        } else {
+                            alert('Error: ' + data.error);
+                        }
+                    } catch (e) {
+                        alert('Error de conexión');
+                    }
+                },
+
+                async releaseStale() {
+                    if (!confirm('¿Liberar todas las salas inactivas por más de 24 horas?')) return;
+                    
+                    try {
+                        const response = await fetch('/admin/pool/release-stale', { 
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content },
+                            body: 'hours=24'
+                        });
+                        const data = await response.json();
+                        
+                        if (data.exito) {
+                            alert(`${data.salasLiberadas} salas liberadas.`);
+                            location.reload();
+                        } else {
+                            alert('Error: ' + data.error);
+                        }
+                    } catch (e) {
+                        alert('Error de conexión');
+                    }
+                },
+
+                async releaseAll() {
+                    if (!confirm('¿LIBERAR TODO EL POOL? Esta acción liberará TODAS las salas y cartones. ¿Estás seguro?')) return;
+                    if (!confirm('Esta acción es irreversible. ¿Confirmar liberación total?')) return;
+                    
+                    try {
+                        const response = await fetch('/admin/pool/release-all', { method: 'POST', headers: { 'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content } });
+                        const data = await response.json();
+                        
+                        if (data.exito) {
+                            alert(`Pool liberado: ${data.salasLiberadas} salas, ${data.cartonesLiberados} cartones.`);
+                            location.reload();
+                        } else {
+                            alert('Error: ' + data.error);
+                        }
+                    } catch (e) {
+                        alert('Error de conexión');
+                    }
+                }
+            };
+
+            document.querySelectorAll('[data-action]').forEach(btn => {
+                const action = btn.getAttribute('data-action');
+                if (action.includes('pool#resetPin')) {
+                    btn.addEventListener('click', () => poolController.resetPin(btn.dataset.poolRoomIdParam));
+                } else if (action.includes('pool#releaseRoom')) {
+                    btn.addEventListener('click', () => poolController.releaseRoom(btn.dataset.poolRoomIdParam));
+                } else if (action.includes('pool#releaseStale')) {
+                    btn.addEventListener('click', () => poolController.releaseStale());
+                } else if (action.includes('pool#releaseAll')) {
+                    btn.addEventListener('click', () => poolController.releaseAll());
+                }
+            });
+        });
+    </script>
+{% endblock %}

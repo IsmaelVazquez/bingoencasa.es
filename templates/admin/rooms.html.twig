@@ -1,0 +1,49 @@
+{% extends 'admin/base_admin.html.twig' %}
+
+{% block title %}Salas{% endblock %}
+
+{% block body %}
+    {% include 'admin/_nav.html.twig' %}
+
+    <section class="mx-auto max-w-6xl px-6 pb-12">
+        <div class="mb-6 flex items-center justify-between">
+            <div>
+                <p class="text-sm font-semibold uppercase tracking-widest text-indigo-600">Salas</p>
+                <h1 class="text-3xl font-bold text-slate-900">Listado</h1>
+                <p class="text-slate-600">Vista rápida de las salas creadas, aunque todavía estén vacías.</p>
+            </div>
+            <div data-controller="utility" data-utility-copy-value="/tv">
+                <button type="button" data-action="utility#copy" class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">Copiar enlace TV</button>
+            </div>
+        </div>
+
+        <div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <table class="min-w-full divide-y divide-slate-200 text-sm">
+                <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-widest text-slate-500">
+                    <tr>
+                        <th class="px-4 py-3">Nombre</th>
+                        <th class="px-4 py-3">Código</th>
+                        <th class="px-4 py-3">Jugadores</th>
+                        <th class="px-4 py-3">Partidas</th>
+                        <th class="px-4 py-3">Creada</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                    {% for room in rooms %}
+                        <tr class="hover:bg-slate-50">
+                            <td class="px-4 py-3 font-semibold text-slate-900">{{ room.name }}</td>
+                            <td class="px-4 py-3 font-mono text-indigo-700">{{ room.code }}</td>
+                            <td class="px-4 py-3 text-slate-700">{{ room.players|length }}</td>
+                            <td class="px-4 py-3 text-slate-700">{{ room.games|length }}</td>
+                            <td class="px-4 py-3 text-slate-500">{{ room.createdAt|date('d/m/Y H:i') }}</td>
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td class="px-4 py-4 text-center text-slate-500" colspan="5">Todavía no hay salas creadas.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+{% endblock %}

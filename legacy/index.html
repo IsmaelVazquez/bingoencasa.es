@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>BingoEnCasa.es | Thrax.es</title>
+
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+
+    <!-- Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Canvas Confetti -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;800;900&display=swap" rel="stylesheet">
+
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #000;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* Use dynamic viewport height for mobile/TV browsers */
+        #root {
+            height: 100vh; /* Fallback */
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .aurora-bg {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%),
+            radial-gradient(at 50% 0%, hsla(225,39%,30%,1) 0, transparent 50%),
+            radial-gradient(at 100% 0%, hsla(339,49%,30%,1) 0, transparent 50%);
+            z-index: -1;
+        }
+
+        .blob {
+            position: absolute;
+            filter: blur(80px);
+            opacity: 0.6;
+            animation: float 20s infinite ease-in-out alternate;
+            border-radius: 50%;
+        }
+        .blob-1 { top: 10%; left: 20%; width: 50vw; height: 50vw; background: #4f46e5; animation-delay: 0s; }
+        .blob-2 { bottom: 10%; right: 10%; width: 40vw; height: 40vw; background: #db2777; animation-delay: -5s; }
+        .blob-3 { bottom: 30%; left: 10%; width: 30vw; height: 30vw; background: #0891b2; animation-delay: -10s; }
+
+        @keyframes float {
+            0% { transform: translate(0, 0) scale(1); }
+            100% { transform: translate(30px, -50px) scale(1.1); }
+        }
+
+        .glass {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+        }
+
+        .glass-panel {
+            background: rgba(30, 30, 35, 0.4);
+            backdrop-filter: blur(25px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+        }
+
+        .sphere {
+            background: radial-gradient(circle at 35% 35%, #ffffff 0%, #e2e8f0 40%, #94a3b8 80%, #475569 100%);
+            box-shadow: inset -10px -10px 20px rgba(0,0,0,0.3), 0 20px 30px rgba(0,0,0,0.4);
+        }
+
+        input[type=range] { -webkit-appearance: none; background: rgba(255,255,255,0.1); border-radius: 999px; height: 6px; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 24px; width: 24px; border-radius: 50%; background: white; box-shadow: 0 2px 6px rgba(0,0,0,0.3); cursor: pointer; margin-top: 0px; }
+
+        select {
+            -webkit-appearance: none; appearance: none;
+            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+            background-repeat: no-repeat; background-position: right 0.5rem center; background-size: 1rem;
+        }
+
+        @keyframes popIn { 0% { transform: scale(0.5); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+        .animate-enter { animation: popIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
+        .animate-pulse-slow { animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+
+        @keyframes slideUp { 0% { transform: translateY(100%); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
+        .animate-slide-up { animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
+
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
+    </style>
+</head>
+<body class="text-white/90 antialiased overflow-hidden selection:bg-pink-500/30">
+<div id="root"></div>
+
+<script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    const playSoundEffect = (type) => {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        try {
+            const ctx = new AudioContext();
+            if (type === 'WIN') {
+                [0, 0.2, 0.4, 0.6].forEach((t, i) => {
+                    const osc = ctx.createOscillator(); const gain = ctx.createGain();
+                    osc.type = 'triangle'; osc.frequency.value = 523.25 * (1 + i * 0.25);
+                    gain.gain.setValueAtTime(0.1, ctx.currentTime + t); gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.5);
+                    osc.connect(gain); gain.connect(ctx.destination); osc.start(ctx.currentTime + t); osc.stop(ctx.currentTime + t + 0.5);
+                });
+            } else if (type === 'FAIL') {
+                [0, 0.3, 0.6].forEach((t, i) => {
+                    const osc = ctx.createOscillator(); const gain = ctx.createGain();
+                    osc.type = 'sawtooth'; osc.frequency.value = 200 - (i * 50);
+                    gain.gain.setValueAtTime(0.1, ctx.currentTime + t); gain.gain.linearRampToValueAtTime(0.001, ctx.currentTime + t + 0.4);
+                    osc.connect(gain); gain.connect(ctx.destination); osc.start(ctx.currentTime + t); osc.stop(ctx.currentTime + t + 0.4);
+                });
+            }
+        } catch (e) { console.error("Audio error", e); }
+    };
+
+    // --- BINGO CARD GENERATOR (3x9 Structure, 14 Numbers) ---
+    const generateBingoCard = (seed) => {
+        let state = seed;
+        const rand = () => { state = (state * 9301 + 49297) % 233280; return state / 233280; };
+
+        const cols = Array.from({length: 9}, () => []);
+        const colRanges = [[1, 9], [10, 19], [20, 29], [30, 39], [40, 49], [50, 59], [60, 69], [70, 79], [80, 90]];
+
+        for (let c = 0; c < 9; c++) {
+            const [min, max] = colRanges[c];
+            cols[c].push(Math.floor(rand() * (max - min + 1)) + min);
+        }
+
+        let extra = 5;
+        while (extra > 0) {
+            const c = Math.floor(rand() * 9);
+            if (cols[c].length < 3) {
+                const [min, max] = colRanges[c];
+                let num;
+                do { num = Math.floor(rand() * (max - min + 1)) + min; } while (cols[c].includes(num));
+                cols[c].push(num);
+                extra--;
+            }
+        }
+        cols.forEach(c => c.sort((a,b) => a-b));
+
+        const grid = Array.from({length: 3}, () => Array(9).fill(null));
+
+        for (let c = 0; c < 9; c++) {
+            const colNums = cols[c];
+            if (colNums.length === 3) {
+                grid[0][c] = colNums[0]; grid[1][c] = colNums[1]; grid[2][c] = colNums[2];
+            } else if (colNums.length === 2) {
+                const pattern = (seed + c) % 3;
+                if (pattern === 0) { grid[0][c] = colNums[0]; grid[1][c] = colNums[1]; }
+                else if (pattern === 1) { grid[1][c] = colNums[0]; grid[2][c] = colNums[1]; }
+                else { grid[0][c] = colNums[0]; grid[2][c] = colNums[1]; }
+            } else {
+                const row = (seed + c) % 2 === 0 ? 1 : (c % 2 === 0 ? 0 : 2);
+                grid[row][c] = colNums[0];
+            }
+        }
+
+        return { id: seed, grid: grid, flat: cols.flat().sort((a,b)=>a-b) };
+    };
+
+    const NICKNAMES = { 1: "El Galán", 15: "La Niña Bonita", 22: "Los Patitos", 33: "La Edad de Cristo", 69: "Ida y Vuelta", 11: "Los Clavos", 90: "El Abuelo", 10: "La Rosa", 5: "El Gato", 7: "La Pipa", 88: "Las Calabazas", 55: "Los Municipales", 25: "Navidad" };
+
+    const Icons = {
+        Play: ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>,
+        Pause: ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>,
+        RotateCcw: ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>,
+        Volume2: ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>,
+        VolumeX: ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>,
+        Trophy: ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M8 21h8"></path><path d="M12 17v4"></path><path d="M7 4h10"></path><path d="M17 4v6a5 5 0 0 1-10 0V4"></path><path d="M7 7H5a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h2"></path><path d="M17 7h2a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-2"></path></svg>,
+        List: ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>,
+        Check: ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="20 6 9 17 4 12"></polyline></svg>,
+        X: ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>,
+        Search: ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>,
+        Mic: ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>,
+        Users: ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>,
+        Tv: ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect x="2" y="7" width="20" height="15" rx="2" ry="2"></rect><polyline points="17 2 12 7 7 2"></polyline></svg>,
+        Printer: ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+    };
+
+    const GlassButton = ({ children, onClick, active = false, variant = 'primary', disabled = false, className = '' }) => {
+        const baseStyles = "px-4 py-3 rounded-2xl font-bold transition-all duration-300 transform active:scale-95 flex items-center justify-center gap-2 backdrop-blur-md border shadow-lg select-none";
+        const variants = {
+            primary: active ? "bg-white text-black border-white shadow-[0_0_20px_rgba(255,255,255,0.3)]" : "bg-white/10 text-white border-white/10 hover:bg-white/20",
+            danger: "bg-red-500/20 text-red-200 border-red-500/30 hover:bg-red-500/30 hover:border-red-400",
+            ghost: "bg-transparent border-transparent text-white/60 hover:text-white hover:bg-white/5",
+            line: "bg-cyan-500/20 text-cyan-200 border-cyan-500/30 hover:bg-cyan-500/30 hover:border-cyan-400 hover:shadow-[0_0_15px_rgba(6,182,212,0.3)]",
+            bingo: "bg-yellow-500/20 text-yellow-200 border-yellow-500/30 hover:bg-yellow-500/30 hover:border-yellow-400 hover:shadow-[0_0_15px_rgba(234,179,8,0.3)]",
+            success: "bg-green-500/20 text-green-200 border-green-500/30 hover:bg-green-500/30",
+        };
+        return <button onClick={onClick} disabled={disabled} className={`${baseStyles} ${variants[variant]} ${disabled ? 'opacity-30 cursor-not-allowed transform-none' : ''} ${className}`}>{children}</button>;
+    };
+
+    const Ball3D = ({ number, size = "md", animate = false }) => {
+        const sizeClasses = {
+            sm: "w-8 h-8 md:w-12 md:h-12 text-xs md:text-lg",
+            md: "w-16 h-16 md:w-20 md:h-20 text-xl md:text-2xl",
+            xl: "w-40 h-40 md:w-56 md:h-56 lg:w-64 lg:h-64 text-7xl md:text-8xl lg:text-9xl"
+        };
+        return <div className={`sphere rounded-full flex items-center justify-center text-slate-800 font-bold relative z-10 ${sizeClasses[size]} ${animate ? 'animate-enter' : ''}`}><span className="relative z-20 tracking-tighter" style={{ fontFamily: 'Inter, sans-serif' }}>{number}</span></div>;
+    };
+
+    const StatusBadge = ({ status }) => {
+        const styles = { PLAYING: "bg-green-500/20 text-green-300 border-green-500/30", PAUSED: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30", CHECKING: "bg-blue-500/20 text-blue-300 border-blue-500/30", STOPPED: "bg-slate-500/20 text-slate-300 border-slate-500/30" };
+        const labels = { PLAYING: "EN JUEGO", PAUSED: "PAUSA", CHECKING: "COMPROBANDO", STOPPED: "ESPERANDO" };
+        return <div className={`px-2 py-1 md:px-3 md:py-1 rounded-full text-[9px] md:text-[10px] font-bold tracking-widest border backdrop-blur-md ${styles[status]}`}><span className="w-1.5 h-1.5 rounded-full bg-current inline-block mr-1 md:mr-2 animate-pulse"></span>{labels[status]}</div>;
+    };
+
+    const ThraxLogo = () => (
+        <svg viewBox="0 0 90 20" className="h-5 md:h-6 w-auto" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2L4 10L12 18L20 10L12 2Z" fill="#ef4444" />
+            <path d="M6 10H18" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+            <text x="28" y="15" fill="white" fontSize="13" fontWeight="900" fontFamily="Inter, sans-serif" letterSpacing="0.1em">THRAX</text>
+        </svg>
+    );
+
+    // --- BINGO LOGO COMPONENT (CLEAN VERSION) ---
+    const BingoLogo = ({ className }) => (
+        <div className={`${className} relative flex items-center justify-center transition-transform hover:scale-105 duration-300`}>
+            <img
+                src="https://bingoencasa.es/assets/logo-b.png"
+                alt="BingoEnCasa"
+                className="w-full h-full object-contain drop-shadow-2xl"
+                onError={(e) => {
+                    e.target.style.display = 'none';
+                    e.target.parentNode.innerHTML = '<span class="text-white font-black text-4xl drop-shadow-[0_0_15px_rgba(255,255,255,0.5)]">B</span>';
+                }}
+            />
+        </div>
+    );
+
+    // --- PRINT FUNCTION MODERNIZED WITH GRID LINES ---
+    const printCards = () => {
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) { alert("Por favor, permite los pop-ups para imprimir"); return; }
+
+        let htmlContent = `
+                <html>
+                <head>
+                    <title>Cartones BingoEnCasa.es</title>
+                    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+                    <style>
+                        @media print {
+                            @page { margin: 0.5cm; }
+                            body { -webkit-print-color-adjust: exact; margin: 0; padding: 0; background: white; }
+                            .no-print { display: none !important; }
+                            .page-break { page-break-after: always; }
+                        }
+                        body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #1f2937; }
+                        .print-container { max-width: 210mm; margin: 0 auto; background: white; padding: 10mm; min-height: 297mm; }
+
+                        .card-wrapper {
+                            border: 2px solid #e5e7eb;
+                            border-radius: 12px;
+                            margin-bottom: 25px;
+                            overflow: hidden;
+                            position: relative;
+                            background: white;
+                            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+                        }
+
+                        .card-header {
+                            background: #111827;
+                            color: white;
+                            padding: 8px 16px;
+                            display: flex;
+                            justify-content: space-between;
+                            align-items: center;
+                        }
+                        .card-logo { display: flex; align-items: center; gap: 8px; }
+                        .logo-text { font-weight: 900; font-size: 16px; letter-spacing: 0.05em; color: white; }
+                        .logo-icon { width: 16px; height: 16px; background: #ef4444; transform: rotate(45deg); display: inline-block; }
+
+                        .card-id-badge {
+                            background: rgba(255,255,255,0.15);
+                            padding: 4px 10px;
+                            border-radius: 999px;
+                            font-family: monospace;
+                            font-size: 14px;
+                            font-weight: bold;
+                            border: 1px solid rgba(255,255,255,0.2);
+                        }
+
+                        .grid-container {
+                            display: grid;
+                            grid-template-columns: repeat(9, 1fr);
+                            border-left: 1px solid #e5e7eb;
+                            border-bottom: 1px solid #e5e7eb;
+                            background: white;
+                        }
+
+                        .cell {
+                            aspect-ratio: 4/3;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            font-size: 24px;
+                            font-weight: 800;
+                            color: #111827;
+                            position: relative;
+                            border-right: 1px solid #e5e7eb;
+                            border-top: 1px solid #e5e7eb;
+                        }
+
+                        .cell.empty {
+                            background: #fcfcfc;
+                            background-image: repeating-linear-gradient(45deg, #fcfcfc 0, #fcfcfc 5px, #f9fafb 5px, #f9fafb 10px);
+                        }
+                        .cell:not(.empty) { background: white; }
+
+                        .cut-line {
+                            border-top: 1px dashed #d1d5db;
+                            margin: 25px 0;
+                            position: relative;
+                            display: flex;
+                            justify-content: center;
+                        }
+
+                        .card-footer {
+                            background: #1f2937;
+                            padding: 6px;
+                            display: flex;
+                            justify-content: center;
+                            align-items: center;
+                            gap: 8px;
+                        }
+                        .footer-text {
+                            font-size: 8px;
+                            color: rgba(255,255,255,0.5);
+                            text-transform: uppercase;
+                            letter-spacing: 1px;
+                        }
+                        .footer-logo {
+                            height: 12px;
+                            width: auto;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div style="position: fixed; top: 20px; right: 20px; z-index: 100;" class="no-print">
+                        <button onclick="window.print()" style="padding: 12px 24px; font-size: 16px; font-weight: bold; background: #2563eb; color: white; border: none; border-radius: 8px; cursor: pointer; box-shadow: 0 4px 12px rgba(37,99,235,0.3);">
+                            🖨️ IMPRIMIR CARTONES
+                        </button>
+                    </div>
+                    <div class="print-container">
+            `;
+
+        for (let i = 1; i <= 10; i++) {
+            const cardData = generateBingoCard(i);
+            htmlContent += `
+                    <div class="card-wrapper">
+                        <div class="card-header">
+                            <div class="card-logo">
+                                <span class="logo-icon"></span>
+                                <span class="logo-text">BINGOENCASA.ES</span>
+                            </div>
+                            <span class="card-id-badge">CARTÓN #${i.toString().padStart(3, '0')}</span>
+                        </div>
+                        <div class="grid-container">
+                `;
+
+            cardData.grid.forEach(row => {
+                row.forEach(cell => {
+                    htmlContent += `<div class="cell ${cell === null ? 'empty' : ''}">${cell || ''}</div>`;
+                });
+            });
+
+            htmlContent += `
+                        </div>
+                        <div class="card-footer">
+                            <span class="footer-text">Powered by</span>
+                            <img src="https://thrax.es/assets/logo_thrax-rojo-y-blanco.svg" class="footer-logo" alt="THRAX" />
+                        </div>
+                    </div>
+                `;
+
+            if (i % 3 !== 0 && i !== 10) htmlContent += `<div class="cut-line"></div>`;
+            if (i % 3 === 0 && i !== 10) htmlContent += `</div><div class="page-break"></div><div class="print-container">`;
+        }
+
+        htmlContent += `</div></body></html>`;
+        printWindow.document.write(htmlContent);
+        printWindow.document.close();
+    };
+
+    // --- LANDING PAGE COMPONENT ---
+    const LandingPage = ({ onSelectMode }) => {
+        return (
+            <div className="h-screen w-screen flex flex-col items-center justify-center p-8 animate-enter overflow-hidden">
+                <div className="text-center mb-8 md:mb-12 flex flex-col items-center">
+                    <div className="mb-4">
+                        <BingoLogo className="w-24 h-24 md:w-32 md:h-32" />
+                    </div>
+                    <h1 className="text-3xl md:text-5xl font-black tracking-tight mb-2">BINGOENCASA<span className="opacity-50 font-normal">.ES</span></h1>
+                    <div className="flex items-center justify-center gap-2 opacity-80">
+                        <span className="text-[10px] uppercase tracking-widest text-white/40">Powered by</span>
+                        <img src="https://thrax.es/assets/logo_thrax-rojo-y-blanco.svg" alt="Thrax" className="h-5 md:h-6 w-auto" />
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-4xl mb-8">
+                    {/* Option 1: Solo/Bombo */}
+                    <div
+                        onClick={() => onSelectMode('SOLO')}
+                        className="glass-panel p-6 md:p-8 rounded-3xl cursor-pointer hover:bg-white/5 transition-all group border border-white/10 hover:border-white/20 hover:scale-[1.02]"
+                    >
+                        <div className="w-12 h-12 md:w-16 md:h-16 rounded-full bg-blue-500/20 text-blue-300 flex items-center justify-center mb-4 md:mb-6 group-hover:scale-110 transition-transform">
+                            <Icons.Tv className="w-6 h-6 md:w-8 md:h-8" />
+                        </div>
+                        <h2 className="text-xl md:text-2xl font-bold mb-2">Modo Bombo (Clásico)</h2>
+                        <p className="text-sm md:text-base text-white/50 mb-4 md:mb-6">Usa la TV solo para cantar números. Ideal si ya tenéis cartones impresos o físicos.</p>
+                        <div className="flex items-center text-blue-300 text-xs md:text-sm font-bold uppercase tracking-widest">
+                            Jugar Ahora <span className="ml-2 group-hover:translate-x-1 transition-transform">→</span>
+                        </div>
+                    </div>
+
+                    {/* Option 2: Online Host */}
+                    <div
+                        onClick={() => onSelectMode('HOST')}
+                        className="glass-panel p-6 md:p-8 rounded-3xl cursor-pointer hover:bg-white/5 transition-all group border border-white/10 hover:border-white/20 hover:scale-[1.02]"
+                    >
+                        <div className="w-12 h-12 md:w-16 md:h-16 rounded-full bg-pink-500/20 text-pink-300 flex items-center justify-center mb-4 md:mb-6 group-hover:scale-110 transition-transform">
+                            <Icons.Users className="w-6 h-6 md:w-8 md:h-8" />
+                        </div>
+                        <h2 className="text-xl md:text-2xl font-bold mb-2">Modo Fiesta (Online)</h2>
+                        <p className="text-sm md:text-base text-white/50 mb-4 md:mb-6">Crea una sala interactiva. Tus amigos se unen y juegan desde sus móviles.</p>
+                        <div className="flex items-center text-pink-300 text-xs md:text-sm font-bold uppercase tracking-widest">
+                            Crear Sala <span className="ml-2 group-hover:translate-x-1 transition-transform">→</span>
+                        </div>
+                    </div>
+                </div>
+
+                <button onClick={printCards} className="glass px-6 py-3 rounded-xl flex items-center gap-2 text-white/70 hover:text-white hover:bg-white/10 transition-all text-sm font-bold uppercase tracking-wide">
+                    <Icons.Printer className="w-5 h-5" /> Descargar 10 Cartones (PDF)
+                </button>
+            </div>
+        );
+    };
+
+    // --- MAIN APP ---
+    const App = () => {
+        const [appMode, setAppMode] = useState('LANDING'); // LANDING, SOLO, HOST_LOBBY, HOST_GAME
+        const [roomCode, setRoomCode] = useState('XMAS-25');
+        const [players, setPlayers] = useState([]);
+
+        // Game State
+        const [numbers] = useState(Array.from({ length: 90 }, (_, i) => i + 1));
+        const [drawnNumbers, setDrawnNumbers] = useState([]);
+        const [currentNumber, setCurrentNumber] = useState(null);
+        const [gameStatus, setGameStatus] = useState('STOPPED');
+        const [checkType, setCheckType] = useState(null);
+        const [speed, setSpeed] = useState(3500);
+        const [speechEnabled, setSpeechEnabled] = useState(true);
+        const [history, setHistory] = useState([]);
+        const [targetPrize, setTargetPrize] = useState('LÍNEA');
+        const [resultPopup, setResultPopup] = useState(null); // 'WIN' or 'FAIL'
+        const [resultMessage, setResultMessage] = useState('');
+
+        // Check State
+        const [checkMode, setCheckMode] = useState('AUTO');
+        const [cardId, setCardId] = useState('');
+        const [generatedCard, setGeneratedCard] = useState(null);
+        const [manualNum, setManualNum] = useState('');
+        const [manualCheckResult, setManualCheckResult] = useState(null);
+        const [showTestCards, setShowTestCards] = useState(false);
+
+        // Voice State
+        const [voices, setVoices] = useState([]);
+        const [selectedVoice, setSelectedVoice] = useState(null);
+
+        const timerRef = useRef(null);
+        const synth = window.speechSynthesis;
+
+        // Safe voice loading to prevent blank screen
+        useEffect(() => {
+            if (!synth) return;
+            const loadVoices = () => {
+                const available = synth.getVoices().filter(v => v.lang.startsWith('es'));
+                setVoices(available);
+                if (available.length > 0) {
+                    const premiumVoice = available.find(v => v.name.includes('Monica') || v.name.includes('Google') || v.name.includes('Premium'));
+                    const standardVoice = available.find(v => v.lang === 'es-ES') || available[0];
+                    setSelectedVoice(premiumVoice || standardVoice);
+                }
+            };
+            loadVoices();
+            if (speechSynthesis.onvoiceschanged !== undefined) { speechSynthesis.onvoiceschanged = loadVoices; }
+        }, [synth]);
+
+        const speakText = (text) => {
+            if (!speechEnabled || !synth) return;
+            synth.cancel();
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'es-ES';
+            utterance.rate = 1.1;
+            if (selectedVoice) utterance.voice = selectedVoice;
+            synth.speak(utterance);
+        };
+
+        const speakNumber = (num) => {
+            if (!speechEnabled || !synth) return;
+            synth.cancel();
+            const utterance = new SpeechSynthesisUtterance(num.toString());
+            utterance.lang = 'es-ES';
+            utterance.rate = speed < 2500 ? 1.2 : 1.0;
+            if (selectedVoice) utterance.voice = selectedVoice;
+            synth.speak(utterance);
+
+            if (NICKNAMES[num] && speed > 2500) {
+                const nick = new SpeechSynthesisUtterance(NICKNAMES[num]);
+                nick.lang = 'es-ES';
+                nick.pitch = 1.1;
+                if (selectedVoice) nick.voice = selectedVoice;
+                synth.speak(nick);
+            }
+        };
+
+        const drawBall = () => {
+            setDrawnNumbers(prev => {
+                if (prev.length >= 90) { stopGame(); return prev; }
+                const remaining = numbers.filter(n => !prev.includes(n));
+                const newNumber = remaining[Math.floor(Math.random() * remaining.length)];
+                setCurrentNumber(newNumber);
+                setHistory(h => [newNumber, ...h].slice(0, 5));
+                speakNumber(newNumber);
+                return [newNumber, ...prev];
+            });
+        };
+
+        useEffect(() => {
+            if (gameStatus === 'PLAYING') {
+                if(drawnNumbers.length === 0 && !currentNumber) drawBall();
+                timerRef.current = setInterval(drawBall, speed);
+            } else { clearInterval(timerRef.current); }
+            return () => clearInterval(timerRef.current);
+        }, [gameStatus, speed]);
+
+        const togglePlayPause = () => {
+            if (gameStatus === 'PLAYING') {
+                setGameStatus('PAUSED');
+                synth.cancel();
+            } else if (drawnNumbers.length < 90) {
+                setGameStatus('PLAYING');
+                setCheckType(null);
+                setResultPopup(null);
+                if(drawnNumbers.length > 0) { speakText(`Continuamos para ${targetPrize.toLowerCase()}`); }
+            }
+        };
+
+        const stopGame = () => {
+            setGameStatus('STOPPED');
+            clearInterval(timerRef.current);
+            setCheckType(null);
+            setTargetPrize('LÍNEA');
+            setResultPopup(null);
+        };
+
+        const resetGame = () => {
+            if(confirm("¿Seguro que quieres salir y volver al inicio?")) {
+                stopGame(); setDrawnNumbers([]); setCurrentNumber(null); setHistory([]); synth.cancel();
+                setAppMode('LANDING'); // Go back to landing
+            }
+        };
+
+        const handleCheck = (type) => {
+            setGameStatus('CHECKING');
+            setCheckType(type);
+            setCheckMode('AUTO');
+            setCardId('');
+            setGeneratedCard(null);
+            setManualNum('');
+            setManualCheckResult(null);
+            setShowTestCards(false);
+            setResultPopup(null);
+            synth.cancel();
+            speakText(type === 'LÍNEA' ? '¡Han cantado línea!' : '¡Han cantado bingo!');
+        };
+
+        const verifyCard = () => {
+            if(!cardId || cardId < 1 || cardId > 10000) return;
+            const card = generateBingoCard(parseInt(cardId));
+            setGeneratedCard(card);
+        };
+
+        const checkManualNumber = () => {
+            const n = parseInt(manualNum);
+            if(n && n >= 1 && n <= 90) {
+                setManualCheckResult(drawnNumbers.includes(n) ? 'FOUND' : 'NOT_FOUND');
+            }
+        };
+
+        const resumeFromCheck = () => {
+            setResultPopup('FAIL');
+            setResultMessage('¡Falsa Alarma!');
+            playSoundEffect('FAIL');
+            speakText(`¡Cartón incorrecto! Continuamos para ${targetPrize.toLowerCase()}.`);
+
+            setTimeout(() => {
+                setResultPopup(null);
+                setGameStatus('PAUSED');
+            }, 3000);
+        };
+
+        const confirmCheck = () => {
+            if (window.confetti) {
+                window.confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+            }
+            setResultPopup('WIN');
+            playSoundEffect('WIN');
+
+            if (checkType === 'LÍNEA') {
+                setResultMessage('¡LÍNEA CORRECTA!');
+                speakText("¡Línea correcta! Seguimos para Bingo.");
+                setTargetPrize('BINGO');
+            } else if (checkType === 'BINGO') {
+                setResultMessage('¡BINGO CORRECTO!');
+                speakText("¡Bingo correcto! ¡Partida finalizada!");
+            }
+
+            setTimeout(() => {
+                setResultPopup(null);
+                setGameStatus('PAUSED');
+                setCheckType(null);
+            }, 4000);
+        };
+
+        const getSpeedLabel = (ms) => { if (ms >= 5000) return "Relax"; if (ms <= 2000) return "Turbo"; return "Normal"; };
+
+        // Mock Lobby Join Logic
+        useEffect(() => {
+            if (appMode === 'HOST_LOBBY') {
+                const mockNames = ['María', 'Juan', 'Papá', 'Abuela', 'Lucía', 'Pedro'];
+                let i = 0;
+                const interval = setInterval(() => {
+                    if (i < mockNames.length) {
+                        setPlayers(prev => [...prev, mockNames[i]]);
+                        i++;
+                    } else {
+                        clearInterval(interval);
+                    }
+                }, 1500);
+                return () => { clearInterval(interval); setPlayers([]); };
+            }
+        }, [appMode]);
+
+        // --- CHECKER HELPERS ---
+        // Check rows for lines
+        const getRowStatus = (rowNums) => {
+            if (!rowNums) return null;
+            const filledCount = rowNums.filter(n => n !== null && drawnNumbers.includes(n)).length;
+            const totalNums = rowNums.filter(n => n !== null).length;
+            if (totalNums === 0) return 'EMPTY';
+            return filledCount === totalNums ? 'COMPLETE' : 'INCOMPLETE';
+        };
+
+        const isBingo = (grid) => {
+            return grid.every(row => getRowStatus(row) === 'COMPLETE' || getRowStatus(row) === 'EMPTY');
+        };
+
+        // --- RENDER ---
+
+        if (appMode === 'LANDING') {
+            return (
+                <div className="relative w-screen h-screen flex flex-col overflow-hidden">
+                    <div className="aurora-bg"><div className="blob blob-1"></div><div className="blob blob-2"></div><div className="blob blob-3"></div></div>
+                    <LandingPage onSelectMode={(mode) => setAppMode(mode === 'SOLO' ? 'SOLO' : 'HOST_LOBBY')} />
+                </div>
+            );
+        }
+
+        if (appMode === 'HOST_LOBBY') {
+            return (
+                <div className="relative w-screen h-screen flex flex-col p-8 items-center justify-center overflow-hidden">
+                    <div className="aurora-bg"><div className="blob blob-1"></div><div className="blob blob-2"></div><div className="blob blob-3"></div></div>
+
+                    <div className="glass-panel p-12 rounded-3xl w-full max-w-5xl text-center relative animate-enter">
+                        <button onClick={() => setAppMode('LANDING')} className="absolute top-6 left-6 text-white/50 hover:text-white flex items-center gap-2">
+                            <Icons.RotateCcw className="w-4 h-4" /> Volver
+                        </button>
+
+                        <h2 className="text-2xl font-bold text-pink-300 uppercase tracking-widest mb-2">Sala Privada</h2>
+                        <div className="text-8xl font-black text-white tracking-tighter mb-8 bg-clip-text text-transparent bg-gradient-to-r from-white to-white/70">
+                            {roomCode}
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-12 mb-12">
+                            <div className="bg-white p-4 rounded-2xl mx-auto w-48 h-48 flex items-center justify-center">
+                                <div className="text-black font-mono text-center text-xs">
+                                    [QR CODE PLACEHOLDER]<br/>
+                                    Escanear para unirse
+                                </div>
+                            </div>
+                            <div className="text-left">
+                                <h3 className="text-white/50 uppercase tracking-widest text-sm font-bold mb-4">Jugadores ({players.length})</h3>
+                                <div className="flex flex-wrap gap-2">
+                                    {players.map((p, i) => (
+                                        <div key={i} className="glass px-4 py-2 rounded-full flex items-center gap-2 animate-enter">
+                                            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                                            {p}
+                                        </div>
+                                    ))}
+                                    {players.length === 0 && <span className="text-white/30 italic">Esperando jugadores...</span>}
+                                </div>
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={() => setAppMode('SOLO')} // Reuse SOLO logic for now as game board is same
+                            className="bg-gradient-to-r from-indigo-500 to-pink-500 px-12 py-6 rounded-2xl font-black text-2xl shadow-2xl hover:scale-105 transition-transform"
+                        >
+                            EMPEZAR PARTIDA
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
+        // GAME VIEW (Shared for SOLO and HOST GAME for now)
+        return (
+            <div className="relative w-screen h-screen flex flex-col p-2 md:p-6 lg:p-8 overflow-hidden">
+                <div className="aurora-bg"><div className="blob blob-1"></div><div className="blob blob-2"></div><div className="blob blob-3"></div></div>
+
+                {/* Navbar */}
+                <nav className="glass rounded-xl md:rounded-2xl p-3 md:p-4 flex flex-col md:flex-row justify-between items-center gap-4 md:gap-0 mb-4 md:mb-6 z-50 sticky top-0 md:relative">
+                    <div className="flex items-center gap-4 md:gap-6 w-full md:w-auto justify-between md:justify-start">
+                        <div className="flex items-center gap-3">
+                            <BingoLogo className="w-10 h-10 md:w-12 md:h-12" />
+                            <div>
+                                <h1 className="text-base md:text-lg font-black leading-none tracking-tight">BINGOENCASA<span className="opacity-50 font-normal">.ES</span></h1>
+                            </div>
+                        </div>
+                        <div className="hidden md:block w-px h-6 bg-white/10"></div>
+                        <div className="flex items-center gap-2 opacity-80 hover:opacity-100 transition-opacity">
+                            <span className="text-[8px] md:text-[9px] uppercase tracking-widest text-white/40 mt-0.5">Creado por</span>
+                            <img src="https://thrax.es/assets/logo_thrax-rojo-y-blanco.svg" alt="Thrax" className="h-5 md:h-6 w-auto" />
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2 md:gap-3 w-full md:w-auto justify-between md:justify-end border-t md:border-t-0 border-white/5 pt-2 md:pt-0">
+                        <StatusBadge status={gameStatus} />
+                        <div className="flex gap-2">
+                            <div className="h-4 md:h-6 w-px bg-white/10 mx-1"></div>
+                            <button onClick={() => setSpeechEnabled(!speechEnabled)} className="p-1.5 md:p-2 rounded-full hover:bg-white/10 transition-colors">{speechEnabled ? <Icons.Volume2 className="w-4 h-4 md:w-5 md:h-5" /> : <Icons.VolumeX className="w-4 h-4 md:w-5 md:h-5 text-white/50" />}</button>
+                            <button onClick={resetGame} className="p-1.5 md:p-2 rounded-full hover:bg-red-500/20 text-red-300 transition-colors" title="Salir al menú"><Icons.RotateCcw className="w-4 h-4 md:w-5 md:h-5" /></button>
+                        </div>
+                    </div>
+                </nav>
+
+                <main className="flex-1 flex flex-col lg:flex-row gap-4 md:gap-6 h-full relative z-10 pb-2 md:pb-4 overflow-hidden">
+                    <div className="flex-1 flex flex-col gap-4 md:gap-6 h-full overflow-hidden">
+
+                        {/* Main Display Stage */}
+                        <div className="glass-panel rounded-2xl md:rounded-3xl p-4 md:p-8 flex flex-col items-center justify-center relative overflow-hidden flex-grow transition-all">
+
+                            {/* RESULTS POPUP OVERLAY */}
+                            {resultPopup && (
+                                <div className="absolute inset-0 z-50 bg-black/90 backdrop-blur-xl flex flex-col items-center justify-center animate-slide-up text-center p-8">
+                                    <div className={`text-6xl mb-6 ${resultPopup === 'WIN' ? 'animate-bounce' : 'animate-pulse'}`}>
+                                        {resultPopup === 'WIN' ? '🏆' : '🚫'}
+                                    </div>
+                                    <h1 className={`text-4xl md:text-6xl font-black uppercase tracking-tighter mb-4 ${resultPopup === 'WIN' ? 'text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500' : 'text-red-500'}`}>
+                                        {resultMessage}
+                                    </h1>
+                                    {resultPopup === 'FAIL' && <p className="text-white/50 text-xl">Continuamos jugando...</p>}
+                                </div>
+                            )}
+
+                            {gameStatus === 'CHECKING' && !resultPopup ? (
+                                <div className="absolute inset-0 z-30 bg-black/90 backdrop-blur-xl flex flex-col animate-enter p-4 md:p-6 overflow-y-auto">
+                                    <div className="flex items-center justify-between w-full mb-4 md:mb-6">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`p-2 md:p-3 rounded-xl ${checkType === 'BINGO' ? 'bg-yellow-500/20 text-yellow-300' : 'bg-cyan-500/20 text-cyan-300'}`}>
+                                                {checkType === 'BINGO' ? <Icons.Trophy className="w-5 h-5 md:w-6 md:h-6" /> : <Icons.List className="w-5 h-5 md:w-6 md:h-6" />}
+                                            </div>
+                                            <div><h2 className="text-lg md:text-xl font-bold uppercase tracking-tight">Verificar {checkType}</h2></div>
+                                        </div>
+                                        <div className="flex bg-white/5 rounded-lg p-1">
+                                            <button onClick={() => setCheckMode('AUTO')} className={`px-2 py-1 md:px-3 md:py-1 text-[10px] md:text-xs font-bold rounded-md transition-all ${checkMode === 'AUTO' ? 'bg-indigo-500 text-white shadow-lg' : 'text-white/40 hover:text-white'}`}>Auto</button>
+                                            <button onClick={() => setCheckMode('MANUAL')} className={`px-2 py-1 md:px-3 md:py-1 text-[10px] md:text-xs font-bold rounded-md transition-all ${checkMode === 'MANUAL' ? 'bg-pink-500 text-white shadow-lg' : 'text-white/40 hover:text-white'}`}>Manual</button>
+                                        </div>
+                                    </div>
+
+                                    {checkMode === 'AUTO' ? (
+                                        <div className="flex flex-col items-center w-full max-w-md mx-auto">
+                                            <div className="flex gap-2 w-full mb-6">
+                                                <input type="number" placeholder="Nº Cartón (1-10000)" className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base md:text-lg font-mono focus:outline-none focus:border-indigo-500 transition-colors text-center placeholder:text-white/20" value={cardId} onChange={(e) => setCardId(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && verifyCard()} />
+                                                <GlassButton onClick={verifyCard} disabled={!cardId} variant="primary"><Icons.Search className="w-5 h-5" /></GlassButton>
+                                            </div>
+                                            <button onClick={() => setShowTestCards(!showTestCards)} className="text-xs text-white/50 hover:text-white underline mb-4 transition-colors">{showTestCards ? 'Ocultar Cartones de Prueba' : '👁️ Ver Cartones de Prueba (1-5)'}</button>
+                                            {showTestCards && (
+                                                <div className="w-full grid gap-2 mb-6 max-h-48 overflow-y-auto custom-scrollbar border border-white/10 rounded-xl p-2 bg-black/20">
+                                                    {[1, 2, 3, 4, 5].map(id => {
+                                                        const c = generateBingoCard(id);
+                                                        return (
+                                                            <div key={id} className="bg-white/5 p-2 rounded-lg flex flex-col gap-1 hover:bg-white/10 transition-colors">
+                                                                <div className="flex justify-between items-center"><span className="text-[10px] font-bold text-indigo-300 uppercase tracking-widest">Cartón #{id}</span></div>
+                                                                <div className="flex flex-wrap gap-1">{c.flat.map(n => (<span key={n} className={`text-[10px] w-5 h-5 flex items-center justify-center rounded ${drawnNumbers.includes(n) ? 'bg-green-500 text-black font-bold' : 'bg-black/40 text-white/40'}`}>{n}</span>))}</div>
+                                                            </div>
+                                                        )
+                                                    })}
+                                                </div>
+                                            )}
+                                            {generatedCard && (
+                                                <div className="w-full bg-white/5 rounded-xl p-4 mb-6 border border-white/10 animate-enter">
+                                                    <div className="flex flex-col gap-2 mb-4">
+                                                        {generatedCard.grid.map((row, rIdx) => {
+                                                            const rowStatus = getRowStatus(row);
+                                                            return (
+                                                                <div key={rIdx} className={`grid grid-cols-9 gap-1 p-1 rounded-lg ${rowStatus === 'COMPLETE' ? 'bg-green-500/20 border border-green-500/50' : 'bg-black/20'}`}>
+                                                                    {row.map((num, cIdx) => (
+                                                                        <div key={cIdx} className={`aspect-[4/3] rounded flex items-center justify-center text-sm font-bold ${num === null ? 'bg-transparent' : drawnNumbers.includes(num) ? 'bg-green-500 text-black' : 'bg-white/10 text-white/50'}`}>
+                                                                            {num || ''}
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            )
+                                                        })}
+                                                    </div>
+                                                    <div className="text-center">
+                                                        {isBingo(generatedCard.grid) ? (
+                                                            <div className="text-green-400 font-bold text-lg animate-pulse">¡BINGO CORRECTO! 🎉</div>
+                                                        ) : generatedCard.grid.some(r => getRowStatus(r) === 'COMPLETE') ? (
+                                                            <div className="text-cyan-400 font-bold text-lg">¡LÍNEA CORRECTA! ✅</div>
+                                                        ) : (
+                                                            <div className="text-white/50 text-xs">Faltan números</div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-col items-center w-full max-w-md mx-auto">
+                                            <p className="text-white/60 text-xs md:text-sm mb-4 text-center">Introduce los números.</p>
+                                            <div className="flex gap-2 w-full mb-6">
+                                                <input type="number" placeholder="Número..." className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base md:text-lg font-mono focus:outline-none focus:border-pink-500 transition-colors text-center placeholder:text-white/20" value={manualNum} onChange={(e) => { setManualNum(e.target.value); setManualCheckResult(null); }} onKeyDown={(e) => e.key === 'Enter' && checkManualNumber()} />
+                                                <GlassButton onClick={checkManualNumber} disabled={!manualNum} variant="primary"><Icons.Check className="w-5 h-5" /></GlassButton>
+                                            </div>
+                                            {manualCheckResult && (<div className={`w-full p-4 rounded-xl flex items-center justify-center gap-3 mb-6 font-bold text-lg ${manualCheckResult === 'FOUND' ? 'bg-green-500/20 text-green-300 border border-green-500/30' : 'bg-red-500/20 text-red-300 border border-red-500/30'}`}>{manualCheckResult === 'FOUND' ? (<><Icons.Check className="w-6 h-6" /> ¡SÍ!</>) : (<><Icons.X className="w-6 h-6" /> ¡NO!</>)}</div>)}
+                                        </div>
+                                    )}
+                                    <div className="mt-auto flex gap-3 w-full">
+                                        <GlassButton variant="danger" className="flex-1 text-sm md:text-base" onClick={resumeFromCheck}>Falsa Alarma</GlassButton>
+                                        <GlassButton variant="success" className="flex-1 text-sm md:text-base" onClick={confirmCheck}>Confirmar</GlassButton>
+                                    </div>
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="absolute top-3 left-4 right-4 md:top-4 md:left-6 md:right-6 flex justify-between text-[10px] md:text-xs font-medium uppercase tracking-widest text-white/40">
+                                        <span>Última bola</span><span>{drawnNumbers.length} / 90</span>
+                                    </div>
+                                    <div className="relative z-10 flex flex-col items-center justify-center h-full">
+                                        {currentNumber ? (
+                                            <div className="flex flex-col items-center">
+                                                <div className="drop-shadow-2xl filter transform transition-transform duration-300">
+                                                    <Ball3D number={currentNumber} size="xl" animate={true} />
+                                                </div>
+                                                <div className="mt-2 md:mt-4 text-center h-8">
+                                                    {NICKNAMES[currentNumber] && <p className="text-base md:text-xl text-pink-300 font-medium animate-pulse-slow">"{NICKNAMES[currentNumber]}"</p>}
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="text-center opacity-40">
+                                                <div className="w-20 h-20 md:w-32 md:h-32 rounded-full border-2 border-dashed border-white/30 animate-spin-slow mx-auto mb-4 flex items-center justify-center">
+                                                    <Icons.Play className="w-8 h-8 md:w-10 md:h-10 ml-1" />
+                                                </div>
+                                                <p className="text-sm md:text-lg font-light">Esperando sorteo...</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="absolute bottom-4 md:bottom-6 left-0 right-0 flex justify-center gap-2 md:gap-4 px-4 md:px-6">
+                                        {history.slice(1).map((n, i) => (<div key={i} className="opacity-50 scale-75 transform transition-all hover:scale-90 hover:opacity-100"><Ball3D number={n} size="sm" /></div>))}
+                                    </div>
+                                </>
+                            )}
+                        </div>
+
+                        {/* Control Panel */}
+                        <div className="glass rounded-2xl md:rounded-3xl p-4 md:p-6 flex-shrink-0">
+                            <div className="flex items-center justify-between mb-4 md:mb-6">
+                                <div className="text-[10px] md:text-xs font-medium uppercase tracking-wider text-white/50">Control de Sala</div>
+                                <div className="flex items-center gap-2 text-[10px] md:text-xs font-mono bg-black/20 px-2 py-1 rounded-lg"><span>{Math.round(speed/1000)}s</span><span className={`w-1.5 h-1.5 rounded-full ${speed < 2500 ? 'bg-pink-500' : 'bg-green-500'}`}></span></div>
+                            </div>
+                            <div className="flex flex-col gap-2 md:gap-3">
+                                <GlassButton onClick={togglePlayPause} active={gameStatus === 'PLAYING'} disabled={drawnNumbers.length >= 90 || gameStatus === 'CHECKING'} className="w-full h-12 md:h-14 text-base md:text-lg">
+                                    {gameStatus === 'PLAYING' ? <Icons.Pause className="w-5 h-5 md:w-6 md:h-6" /> : <Icons.Play className="w-5 h-5 md:w-6 md:h-6" />}
+                                    {gameStatus === 'PLAYING' ? 'PAUSAR SORTEO' : drawnNumbers.length > 0 ? 'CONTINUAR SORTEO' : 'EMPEZAR BINGO'}
+                                </GlassButton>
+                                <div className="grid grid-cols-2 gap-2 md:gap-3 mt-1 md:mt-2">
+                                    <GlassButton variant="line" onClick={() => handleCheck('LÍNEA')} disabled={gameStatus === 'CHECKING' || drawnNumbers.length === 0} className="h-12 md:h-16 text-lg md:text-xl tracking-tight"><Icons.List className="w-5 h-5 md:w-6 md:h-6" />¡LÍNEA!</GlassButton>
+                                    <GlassButton variant="bingo" onClick={() => handleCheck('BINGO')} disabled={gameStatus === 'CHECKING' || drawnNumbers.length === 0} className="h-12 md:h-16 text-lg md:text-xl tracking-tight"><Icons.Trophy className="w-5 h-5 md:w-6 md:h-6" />¡BINGO!</GlassButton>
+                                </div>
+                                <div className="bg-black/20 rounded-xl p-3 md:p-4 mt-2">
+                                    <div className="flex justify-between text-[10px] md:text-xs mb-2 md:mb-3 text-white/70"><span>Velocidad</span><span>{getSpeedLabel(speed)}</span></div>
+                                    <input type="range" min="1500" max="6000" step="500" value={speed} onChange={(e) => setSpeed(Number(e.target.value))} className="w-full accent-white" />
+                                    <div className="flex justify-between mt-2 text-[8px] md:text-[10px] text-white/30 uppercase"><span>Rápido</span><span>Lento</span></div>
+                                </div>
+                                {voices.length > 0 && (
+                                    <div className="bg-black/20 rounded-xl p-3 md:p-4 mt-2">
+                                        <div className="flex justify-between text-[10px] md:text-xs mb-2 text-white/70"><span>Voz del Sistema</span><Icons.Mic className="w-3 h-3 opacity-50" /></div>
+                                        <select value={selectedVoice ? selectedVoice.name : ''} onChange={(e) => { const v = voices.find(voice => voice.name === e.target.value); setSelectedVoice(v); }} className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 transition-colors cursor-pointer truncate">
+                                            {voices.map(v => (<option key={v.name} value={v.name} className="bg-slate-800 text-white">{v.name.replace('Microsoft', '').replace('Google', '').trim()}</option>))}
+                                        </select>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Right Board */}
+                    <div className="flex-[1.5] glass-panel rounded-2xl md:rounded-3xl p-4 md:p-8 flex flex-col h-full overflow-hidden">
+                        <div className="flex justify-between items-center mb-4 md:mb-6 flex-shrink-0">
+                            <h3 className="text-base md:text-lg font-semibold tracking-tight">Tablero</h3>
+                            <div className="text-[10px] md:text-xs text-white/50">{90 - drawnNumbers.length} bolas restantes</div>
+                        </div>
+                        {/* Grid container with forced 9 rows */}
+                        <div className="grid grid-cols-10 gap-1 h-full flex-1 min-h-0" style={{ gridTemplateRows: 'repeat(9, minmax(0, 1fr))' }}>
+                            {numbers.map((num) => {
+                                const isDrawn = drawnNumbers.includes(num);
+                                const isCurrent = currentNumber === num;
+                                return (
+                                    <div key={num} className="relative flex items-center justify-center w-full h-full bg-white/5 rounded-md overflow-hidden">
+                                        <div className={`
+                                                flex items-center justify-center rounded-full
+                                                font-bold transition-all duration-300
+                                                aspect-square
+                                                /* Maximize size while keeping circle shape inside rect cell */
+                                                h-[92%] w-auto max-w-[92%]
+                                                text-[10px] md:text-sm lg:text-base xl:text-xl
+                                                ${isCurrent
+                                            ? 'bg-[#ef4444] text-white shadow-[0_0_20px_rgba(239,68,68,0.6)] scale-105 z-20 animate-pulse'
+                                            : isDrawn
+                                                ? 'bg-white text-black shadow-sm scale-100 z-10'
+                                                : 'text-white/20 hover:bg-white/10 scale-90'}
+                                            `}>
+                                            {num}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                        <div className="mt-4 md:mt-6 pt-4 md:pt-6 border-t border-white/5 flex-shrink-0">
+                            <div className="h-1 w-full bg-white/10 rounded-full overflow-hidden"><div className="h-full bg-gradient-to-r from-indigo-400 to-pink-400 transition-all duration-700 ease-out" style={{ width: `${(drawnNumbers.length / 90) * 100}%` }}></div></div>
+                        </div>
+                    </div>
+                </main>
+            </div>
+        );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+</script>
+</body>
+</html>

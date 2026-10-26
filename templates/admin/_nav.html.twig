@@ -1,0 +1,19 @@
+{% set current = app.request.attributes.get('_route') %}
+<header class="sticky top-0 z-10 mb-6 border-b border-slate-200 bg-white/90 backdrop-blur">
+    <div class="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+        <div class="flex items-center gap-3">
+            <a href="/admin" class="text-xl font-black tracking-tight text-slate-900">BingoEnCasa</a>
+            <span class="rounded-full bg-indigo-100 px-3 py-1 text-xs font-semibold text-indigo-700">Panel</span>
+        </div>
+        <nav class="flex items-center gap-4 text-sm font-semibold text-slate-700">
+            <a class="rounded-lg px-3 py-2 {{ current starts with 'app_admin_dashboard' ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-slate-100' }}" href="{{ path('app_admin_dashboard') }}">Dashboard</a>
+            <a class="rounded-lg px-3 py-2 {{ current starts with 'app_admin_pool' ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-slate-100' }}" href="{{ path('app_admin_pool') }}">Pool</a>
+            <a class="rounded-lg px-3 py-2 {{ current starts with 'app_admin_rooms' ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-slate-100' }}" href="{{ path('app_admin_rooms') }}">Salas</a>
+            <a class="rounded-lg px-3 py-2 {{ current starts with 'app_admin_claims' ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-slate-100' }}" href="{{ path('app_admin_claims') }}">Reclamaciones</a>
+            <a class="rounded-lg px-3 py-2 {{ current starts with 'app_admin_settings' ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-slate-100' }}" href="{{ path('app_admin_settings') }}">Configuración</a>
+        </nav>
+        <form method="post" action="{{ path('app_logout') }}">
+            <button class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50" type="submit">Salir</button>
+        </form>
+    </div>
+</header>
