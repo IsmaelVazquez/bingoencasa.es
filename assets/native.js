@@ -52,7 +52,7 @@ export async function initNative() {
             try {
                 const u = new URL(url);
                 if (u.pathname.includes('/fiesta/unirse')) {
-                    window.location.href = u.pathname + u.search;
+                    window.location.href = u.pathname + u.search + u.hash;
                 }
             } catch (e) { /* url no parseable */ }
         });

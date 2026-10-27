@@ -22,7 +22,7 @@
                     name="codigo" 
                     placeholder="Ej: SUERTE42" 
                     value="{{ codigoFromQr }}"
-                    class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-4 text-lg text-center font-mono uppercase tracking-widest focus:outline-none focus:border-cyan-500 transition-colors placeholder:text-white/30"
+                    class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-4 text-lg text-center font-mono uppercase tracking-widest focus:outline-none focus:border-cyan-500 transition-colors placeholder:text-white/50"
                     required
                 >
             </div>
@@ -38,7 +38,7 @@
                     maxlength="4"
                     pattern="[0-9]{4}"
                     inputmode="numeric"
-                    class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-4 text-2xl text-center font-mono tracking-[0.5em] focus:outline-none focus:border-yellow-500 transition-colors placeholder:text-white/30"
+                    class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-4 text-2xl text-center font-mono tracking-[0.5em] focus:outline-none focus:border-yellow-500 transition-colors placeholder:text-white/50"
                     required
                 >
             </div>
@@ -51,7 +51,7 @@
                     name="apodo" 
                     placeholder="Ej: María" 
                     maxlength="30"
-                    class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-4 text-lg focus:outline-none focus:border-cyan-500 transition-colors placeholder:text-white/30"
+                    class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-4 text-lg focus:outline-none focus:border-cyan-500 transition-colors placeholder:text-white/50"
                     required
                 >
             </div>
@@ -61,9 +61,21 @@
             </button>
         </form>
         
-        <a href="/" class="block text-center mt-6 text-white/40 hover:text-white transition-colors text-sm">
+        <a href="/" class="block text-center mt-6 text-white/55 hover:text-white transition-colors text-sm">
             ← Volver al inicio
         </a>
     </div>
 </div>
+
+<script>
+// El QR lleva el PIN en el fragmento (#pin=1234), que el navegador no envía al
+// servidor. Se copia al campo y se borra de la barra de direcciones.
+(() => {
+    const pin = new URLSearchParams(location.hash.slice(1)).get('pin');
+    if (!pin) return;
+    const field = document.getElementById('pin');
+    if (!field.value) field.value = pin.replace(/\D/g, '').slice(0, 4);
+    history.replaceState(null, '', location.pathname + location.search);
+})();
+</script>
 {% endblock %}

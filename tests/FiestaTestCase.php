@@ -23,6 +23,7 @@ abstract class FiestaTestCase extends WebTestCase
     protected function setUp(): void
     {
         $this->host = static::createClient();
+        static::getContainer()->get('test.rate_limiter_pool')->clear();
         $this->resetDatabase();
     }
 
@@ -34,7 +35,7 @@ abstract class FiestaTestCase extends WebTestCase
     protected function resetDatabase(int $rooms = 5, int $cardTemplates = 60): void
     {
         $this->em()->getConnection()->executeStatement(
-            'TRUNCATE claim, draw, card, player, game, room, card_template RESTART IDENTITY CASCADE'
+            'TRUNCATE claim, draw, card, player, game, room, card_template, system_config RESTART IDENTITY CASCADE'
         );
         $this->createPool($rooms, $cardTemplates);
     }

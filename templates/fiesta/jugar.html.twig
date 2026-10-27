@@ -12,8 +12,10 @@
 </div>
 <div id="net" class="f-net rounded-full px-4 py-2 text-sm font-semibold flex items-center gap-2" role="status">
     <span class="f-spin rounded-full flex-shrink-0" style="width:14px;height:14px;border:2px solid rgba(255,208,137,0.3);border-top-color:#ffd089"></span>
-    <span>Sin conexión. Reintentando…</span>
+    <span id="net-text"></span>
 </div>
+{# Lo que oye un lector de pantalla: la bola nueva y los cambios de pantalla. #}
+<div id="live" class="f-sr" aria-live="polite"></div>
 <div id="toast" class="f-toast rounded-2xl px-4 py-3 text-sm font-semibold text-center" role="alert"></div>
 
 <script>
@@ -132,7 +134,7 @@ function cardHtml(card) {
             const marked = drawnBalls.includes(num);
             const cls = isWinRow && marked ? 'f-cell--line' : (marked ? 'f-cell--marked' : 'f-cell');
             return `<div class="${cls} rounded-md aspect-square flex items-center justify-center font-bold text-sm"
-                style="font-family:'Space Grotesk',Inter,sans-serif;">${num}</div>`;
+                style="font-family:'Space Grotesk',Inter,sans-serif;">${num}${marked ? '<span class="f-sr"> marcado</span>' : ''}</div>`;
         }).join('');
         return `<div class="grid grid-cols-9 gap-1">${cells}</div>`;
     }).join('');
@@ -153,9 +155,9 @@ function prizesBar() {
     if (!estado || !(estado.boteTotal > 0)) return '';
     return `<div class="rounded-xl p-3" style="background:#13141b;border:1px solid rgba(255,255,255,0.06)">
         <div class="flex justify-center gap-6 text-sm">
-            <div class="text-center"><span class="text-white/40 text-xs">Línea</span><p class="font-bold" style="color:#2fd4e3">${points(estado.premioLinea)}</p></div>
-            <div class="text-center"><span class="text-white/40 text-xs">Bingo</span><p class="font-bold" style="color:#ffce4d">${points(estado.premioBingo)}</p></div>
-            <div class="text-center"><span class="text-white/40 text-xs">Bote</span><p class="font-bold" style="color:#3ed993">${points(estado.boteTotal)}</p></div>
+            <div class="text-center"><span class="text-white/55 text-xs">Línea</span><p class="font-bold" style="color:#2fd4e3">${points(estado.premioLinea)}</p></div>
+            <div class="text-center"><span class="text-white/55 text-xs">Bingo</span><p class="font-bold" style="color:#ffce4d">${points(estado.premioBingo)}</p></div>
+            <div class="text-center"><span class="text-white/55 text-xs">Bote</span><p class="font-bold" style="color:#3ed993">${points(estado.boteTotal)}</p></div>
         </div></div>`;
 }
 
@@ -167,11 +169,11 @@ function renderEspera() {
         <div class="f-spin rounded-full" style="width:56px;height:56px;border:4px solid rgba(47,212,227,0.25);border-top-color:#2fd4e3"></div>
         <h1 class="text-2xl font-black">¡Estás dentro!</h1>
         <div class="rounded-2xl px-5 py-3" style="background:#13141b;border:1px solid rgba(255,255,255,0.06)">
-            <p class="text-white/40 text-xs uppercase tracking-widest">Sala</p>
+            <p class="text-white/55 text-xs uppercase tracking-widest">Sala</p>
             <p class="text-3xl font-black tracking-tight" style="font-family:'Space Grotesk',Inter,sans-serif">${salaCodigo}</p>
         </div>
         ${players.length ? `<div class="flex flex-wrap justify-center gap-3 max-w-sm">${list}</div>` : ''}
-        ${nCartones ? `<p class="text-white/50 text-sm">Tienes <span class="font-bold text-white">${nCartones}</span> cartón${nCartones > 1 ? 'es' : ''} reservado${nCartones > 1 ? 's' : ''}.</p>` : `<p class="text-white/40 text-sm">Esperando a que el anfitrión empiece la partida…</p>`}
+        ${nCartones ? `<p class="text-white/50 text-sm">Tienes <span class="font-bold text-white">${nCartones}</span> cartón${nCartones > 1 ? 'es' : ''} reservado${nCartones > 1 ? 's' : ''}.</p>` : `<p class="text-white/55 text-sm">Esperando a que el anfitrión empiece la partida…</p>`}
     </div>`;
 }
 
@@ -188,18 +190,18 @@ function renderJugando() {
     }
 
     const hist = history.slice(1, 6).map(n => `<div class="rounded-full flex items-center justify-center text-xs font-bold f-ball" style="width:34px;height:34px;font-family:'Space Grotesk',Inter,sans-serif">${n}</div>`).join('');
-    const cardsHtml = cards.length ? cards.map(cardHtml).join('') : `<p class="text-white/40 text-center py-6">Sin cartones asignados</p>`;
+    const cardsHtml = cards.length ? cards.map(cardHtml).join('') : `<p class="text-white/55 text-center py-6">Sin cartones asignados</p>`;
 
     return `<div class="flex-1 flex flex-col p-4 gap-4 overflow-y-auto pb-28">
         <header class="rounded-2xl p-4 flex items-center justify-between" style="background:#13141b;border:1px solid rgba(255,255,255,0.06)">
-            <div><span class="text-white/40 text-xs">Sala</span><p class="font-bold">${salaCodigo}</p></div>
+            <div><span class="text-white/55 text-xs">Sala</span><p class="font-bold">${salaCodigo}</p></div>
             <span class="px-3 py-1 rounded-full text-xs font-bold" style="background:rgba(62,217,147,0.16);color:#8af0c0">EN JUEGO</span>
-            <div class="text-right"><span class="text-white/40 text-xs">Jugador</span><p class="font-bold">${esc(apodoPropio)}</p></div>
+            <div class="text-right"><span class="text-white/55 text-xs">Jugador</span><p class="font-bold">${esc(apodoPropio)}</p></div>
         </header>
         <div class="flex justify-center">${objetivoPill()}</div>
         ${prizesBar()}
         <div class="rounded-3xl p-6 flex flex-col items-center gap-3" style="background:#13141b;border:1px solid rgba(255,255,255,0.06)">
-            <p class="text-white/40 text-sm">Última bola</p>
+            <p class="text-white/55 text-sm">Última bola</p>
             ${ball3D(currentBall, 96)}
             <div class="flex gap-2 flex-wrap justify-center">${hist}</div>
         </div>
@@ -256,6 +258,16 @@ document.getElementById('actions').addEventListener('click', e => {
 });
 
 // ---------- avisos ----------
+function announce(text) {
+    const el = document.getElementById('live');
+    if (text && el.textContent !== text) el.textContent = text;
+}
+const VIEW_ANNOUNCEMENTS = {
+    comprobando: 'Canto enviado. El anfitrión está revisando tu cartón.',
+    ganaste: '¡Has ganado el bingo!',
+    fin: 'Partida finalizada.',
+    cerrada: 'La sala se ha cerrado.',
+};
 let toastTimer = null;
 function showToast(msg) {
     const el = document.getElementById('toast');
@@ -265,8 +277,12 @@ function showToast(msg) {
     toastTimer = setTimeout(() => el.classList.remove('is-visible'), 4500);
 }
 function updateConnection() {
-    const offline = !navigator.onLine || errorCount >= 2;
-    document.getElementById('net').classList.toggle('is-visible', offline && !stopped);
+    const show = (!navigator.onLine || errorCount >= 2) && !stopped;
+    const net = document.getElementById('net');
+    // El texto solo existe mientras se ve, para que el lector de pantalla lo anuncie al aparecer.
+    const text = show ? 'Sin conexión. Reintentando…' : '';
+    if (net.lastElementChild.textContent !== text) net.lastElementChild.textContent = text;
+    net.classList.toggle('is-visible', show);
 }
 
 function renderComprobando() {
@@ -390,6 +406,7 @@ async function reclamar(tipo) {
     vibrate(40);
     view = 'comprobando';
     render();
+    announce(VIEW_ANNOUNCEMENTS.comprobando);
     let error = null;
     try {
         const res = await fetch('/api/reclamaciones', {
@@ -470,6 +487,7 @@ async function refreshState() {
                     // Vibra si la bola recién cantada está en alguno de mis cartones.
                     if (currentBall && currentBall !== prevBallSeen) {
                         prevBallSeen = currentBall;
+                        announce(`Bola ${currentBall}${ownNumbers.has(currentBall) ? ', está en tu cartón' : ''}`);
                         if (ownNumbers.has(currentBall)) vibrate(80);
                     }
                 }
@@ -478,7 +496,13 @@ async function refreshState() {
             estado = null;
         }
 
+        const previousView = view;
         view = deriveView();
+        if (view !== previousView) {
+            announce(view === 'aviso' && estado.reclamacionActiva
+                ? `${estado.reclamacionActiva.apodo} canta ${estado.reclamacionActiva.tipo}. El anfitrión lo está comprobando.`
+                : VIEW_ANNOUNCEMENTS[view]);
+        }
         if (view === 'jugando') requestWake(); else releaseWake();
         // La partida o la sala ya terminaron: no hay nada más que sondear.
         if (['ganaste', 'fin', 'cerrada'].includes(view)) stopped = true;

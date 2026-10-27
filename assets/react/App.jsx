@@ -120,7 +120,7 @@ const Icons = {
     Gauge: ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m12 14 4-4"></path><path d="M3.34 19a10 10 0 1 1 17.32 0"></path></svg>
 };
 
-const GlassButton = ({ children, onClick, active = false, variant = 'primary', disabled = false, className = '' }) => {
+const GlassButton = ({ children, onClick, active = false, variant = 'primary', disabled = false, className = '', ...rest }) => {
     const baseStyles = "px-4 py-3 rounded-2xl font-bold transition-all duration-300 transform active:scale-95 flex items-center justify-center gap-2 backdrop-blur-md border shadow-lg select-none";
     const variants = {
         primary: active ? "bg-white text-black border-white shadow-[0_0_20px_rgba(255,255,255,0.3)]" : "bg-white/10 text-white border-white/10 hover:bg-white/20",
@@ -130,7 +130,7 @@ const GlassButton = ({ children, onClick, active = false, variant = 'primary', d
         bingo: "bg-yellow-500/20 text-yellow-200 border-yellow-500/30 hover:bg-yellow-500/30 hover:border-yellow-400 hover:shadow-[0_0_15px_rgba(234,179,8,0.3)]",
         success: "bg-green-500/20 text-green-200 border-green-500/30 hover:bg-green-500/30",
     };
-    return <button onClick={onClick} disabled={disabled} className={`${baseStyles} ${variants[variant]} ${disabled ? 'opacity-30 cursor-not-allowed transform-none' : ''} ${className}`}>{children}</button>;
+    return <button {...rest} onClick={onClick} disabled={disabled} className={`${baseStyles} ${variants[variant]} ${disabled ? 'opacity-30 cursor-not-allowed transform-none' : ''} ${className}`}>{children}</button>;
 };
 
 const Ball3D = ({ number, size = "md", animate = false }) => {
@@ -414,7 +414,7 @@ const LandingPage = ({ onSelectMode }) => {
                 </div>
                 <h1 className="text-3xl md:text-5xl font-black tracking-tight mb-2">BINGOENCASA<span className="opacity-50 font-normal">.ES</span></h1>
                 <div className="flex items-center justify-center gap-2 opacity-80">
-                    <span className="text-[10px] uppercase tracking-widest text-white/40">Powered by</span>
+                    <span className="text-[10px] uppercase tracking-widest text-white/55">Powered by</span>
                     <img src="/assets/Thrax.es.svg" alt="Thrax.es" className="h-6 md:h-8 w-auto" />
                 </div>
             </div>
@@ -1010,7 +1010,7 @@ const App = () => {
     };
 
     const confirmCheck = () => {
-        confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+        confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, disableForReducedMotion: true });
         setResultPopup('WIN');
         playSoundEffect('WIN');
 
@@ -1069,7 +1069,7 @@ const App = () => {
 
                 try {
                     const baseUrl = window.location.origin;
-                    const joinUrl = `${baseUrl}/fiesta/unirse?codigo=${roomCode}&pin=${roomPin}`;
+                    const joinUrl = `${baseUrl}/fiesta/unirse?codigo=${roomCode}#pin=${roomPin}`;
 
                     const qr = new QRCodeStyling({
                         width: 180,
@@ -1222,7 +1222,7 @@ const App = () => {
             }
 
             if (accion === 'aprobar' && tipo === 'BINGO') {
-                confetti({ particleCount: 200, spread: 80, origin: { y: 0.6 } });
+                confetti({ particleCount: 200, spread: 80, origin: { y: 0.6 }, disableForReducedMotion: true });
                 playSoundEffect('WIN');
                 speakText(`¡Bingo correcto! ${apodo} ha ganado. Partida finalizada.`);
                 setFiestaWinner(prev => prev || { apodo, tipo: 'BINGO', premio: null });
@@ -1323,6 +1323,16 @@ const App = () => {
 
     useWakeLock(appMode === 'SOLO' && gameStatus !== 'STOPPED');
 
+    // Escape cierra los desplegables de velocidad y voz.
+    useEffect(() => {
+        if (!showSpeedPopup && !showVoicePopup) return;
+        const onKey = (e) => {
+            if (e.key === 'Escape') { setShowSpeedPopup(false); setShowVoicePopup(false); }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [showSpeedPopup, showVoicePopup]);
+
     // Reset room state when leaving lobby
     useEffect(() => {
         if (appMode !== 'HOST_LOBBY') {
@@ -1364,7 +1374,7 @@ const App = () => {
 
     const copyJoinUrl = () => {
         const baseUrl = window.location.origin;
-        const joinUrl = `${baseUrl}/fiesta/unirse?codigo=${roomCode}&pin=${roomPin}`;
+        const joinUrl = `${baseUrl}/fiesta/unirse?codigo=${roomCode}#pin=${roomPin}`;
         navigator.clipboard.writeText(joinUrl).then(() => {
             setUrlCopied(true);
             setTimeout(() => setUrlCopied(false), 2000);
@@ -1489,18 +1499,18 @@ const App = () => {
                                 )}
                                 <div ref={qrRef} className="w-full h-full flex items-center justify-center"></div>
                             </div>
-                            <p className="text-white/40 text-xs mt-3">Escanea para unirte</p>
+                            <p className="text-white/55 text-xs mt-3">Escanea para unirte</p>
                         </div>
                         <div className="text-left">
                             <h3 className="text-white/50 uppercase tracking-widest text-sm font-bold mb-4">Jugadores ({players.length})</h3>
                             <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto">
-                                {players.map((p, i) => (
-                                    <div key={i} className="glass px-4 py-2 rounded-full flex items-center gap-2 animate-enter">
+                                {players.map((p) => (
+                                    <div key={p} className="glass px-4 py-2 rounded-full flex items-center gap-2 animate-enter">
                                         <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
                                         {p}
                                     </div>
                                 ))}
-                                {players.length === 0 && <span className="text-white/30 italic">Esperando jugadores...</span>}
+                                {players.length === 0 && <span className="text-white/55 italic">Esperando jugadores...</span>}
                             </div>
                         </div>
                     </div>
@@ -1553,8 +1563,8 @@ const App = () => {
                         <div className="hidden md:flex items-center gap-2">
                             <Icons.Users className="w-4 h-4 text-pink-300" />
                             <div className="flex gap-1">
-                                {fiestaPlayers.slice(0, 4).map((p, i) => (
-                                    <span key={i} className="glass px-2 py-1 rounded-full text-xs flex items-center gap-1">
+                                {fiestaPlayers.slice(0, 4).map((p) => (
+                                    <span key={p} className="glass px-2 py-1 rounded-full text-xs flex items-center gap-1">
                                         <span className="w-1.5 h-1.5 bg-green-400 rounded-full"></span>
                                         {p}
                                     </span>
@@ -1564,15 +1574,15 @@ const App = () => {
                         </div>
                     )}
                     <div className="hidden lg:flex items-center gap-2 opacity-80">
-                        <span className="text-[9px] uppercase tracking-widest text-white/40">Creado por</span>
+                        <span className="text-[9px] uppercase tracking-widest text-white/55">Creado por</span>
                         <img src="/assets/Thrax.es.svg" alt="Thrax.es" className="h-4 w-auto" />
                     </div>
                 </div>
                 <div className="flex items-center gap-1 md:gap-3">
                     <StatusBadge status={gameStatus} />
                     <div className="flex gap-1 md:gap-2">
-                        <button onClick={() => setSpeechEnabled(!speechEnabled)} className="p-2 md:p-2 rounded-full hover:bg-white/10 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center">{speechEnabled ? <Icons.Volume2 className="w-5 h-5" /> : <Icons.VolumeX className="w-5 h-5 text-white/50" />}</button>
-                        <button onClick={resetGame} className="p-2 md:p-2 rounded-full hover:bg-red-500/20 text-red-300 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center" title="Salir al menú"><Icons.RotateCcw className="w-5 h-5" /></button>
+                        <button onClick={() => setSpeechEnabled(!speechEnabled)} aria-label="Voz del bombo" aria-pressed={speechEnabled} className="p-2 md:p-2 rounded-full hover:bg-white/10 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center">{speechEnabled ? <Icons.Volume2 className="w-5 h-5" /> : <Icons.VolumeX className="w-5 h-5 text-white/50" />}</button>
+                        <button onClick={resetGame} className="p-2 md:p-2 rounded-full hover:bg-red-500/20 text-red-300 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center" title="Salir al menú" aria-label="Salir al menú"><Icons.RotateCcw className="w-5 h-5" /></button>
                     </div>
                 </div>
             </nav>
@@ -1602,7 +1612,7 @@ const App = () => {
 
                         {/* RESULTS POPUP OVERLAY */}
                         {resultPopup && (
-                            <div className="absolute inset-0 z-50 bg-black/90 backdrop-blur-xl flex flex-col items-center justify-center animate-slide-up text-center p-8">
+                            <div role="status" className="absolute inset-0 z-50 bg-black/90 backdrop-blur-xl flex flex-col items-center justify-center animate-slide-up text-center p-8">
                                 <div className={`text-6xl mb-6 ${resultPopup === 'WIN' ? 'animate-bounce' : 'animate-pulse'}`}>
                                     {resultPopup === 'WIN' ? '🏆' : '🚫'}
                                 </div>
@@ -1623,16 +1633,16 @@ const App = () => {
                                         <div><h2 className="text-lg md:text-xl font-bold uppercase tracking-tight">Verificar {checkType}</h2></div>
                                     </div>
                                     <div className="flex bg-white/5 rounded-lg p-1">
-                                        <button onClick={() => setCheckMode('AUTO')} className={`px-2 py-1 md:px-3 md:py-1 text-[10px] md:text-xs font-bold rounded-md transition-all ${checkMode === 'AUTO' ? 'bg-indigo-500 text-white shadow-lg' : 'text-white/40 hover:text-white'}`}>Auto</button>
-                                        <button onClick={() => setCheckMode('MANUAL')} className={`px-2 py-1 md:px-3 md:py-1 text-[10px] md:text-xs font-bold rounded-md transition-all ${checkMode === 'MANUAL' ? 'bg-pink-500 text-white shadow-lg' : 'text-white/40 hover:text-white'}`}>Manual</button>
+                                        <button onClick={() => setCheckMode('AUTO')} className={`px-2 py-1 md:px-3 md:py-1 text-[10px] md:text-xs font-bold rounded-md transition-all ${checkMode === 'AUTO' ? 'bg-indigo-500 text-white shadow-lg' : 'text-white/60 hover:text-white'}`}>Auto</button>
+                                        <button onClick={() => setCheckMode('MANUAL')} className={`px-2 py-1 md:px-3 md:py-1 text-[10px] md:text-xs font-bold rounded-md transition-all ${checkMode === 'MANUAL' ? 'bg-pink-500 text-white shadow-lg' : 'text-white/60 hover:text-white'}`}>Manual</button>
                                     </div>
                                 </div>
 
                                 {checkMode === 'AUTO' ? (
                                     <div className="flex flex-col items-center w-full max-w-md mx-auto">
                                         <div className="flex gap-2 w-full mb-6">
-                                            <input type="number" placeholder="Nº Cartón (ej: 1234)" className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base md:text-lg font-mono focus:outline-none focus:border-indigo-500 transition-colors text-center placeholder:text-white/20" value={cardId} onChange={(e) => { setCardId(e.target.value); setCardNotFound(false); }} onKeyDown={(e) => e.key === 'Enter' && verifyCard()} />
-                                            <GlassButton onClick={verifyCard} disabled={!cardId || cardLoading} variant="primary">
+                                            <input type="number" aria-label="Número de cartón" placeholder="Nº Cartón (ej: 1234)" className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base md:text-lg font-mono focus:outline-none focus:border-indigo-500 transition-colors text-center placeholder:text-white/45" value={cardId} onChange={(e) => { setCardId(e.target.value); setCardNotFound(false); }} onKeyDown={(e) => e.key === 'Enter' && verifyCard()} />
+                                            <GlassButton onClick={verifyCard} disabled={!cardId || cardLoading} variant="primary" aria-label="Comprobar cartón">
                                                 {cardLoading ? <span className="animate-spin">⏳</span> : <Icons.Search className="w-5 h-5" />}
                                             </GlassButton>
                                         </div>
@@ -1676,8 +1686,8 @@ const App = () => {
                                     <div className="flex flex-col items-center w-full max-w-md mx-auto">
                                         <p className="text-white/60 text-xs md:text-sm mb-4 text-center">Introduce los números.</p>
                                         <div className="flex gap-2 w-full mb-6">
-                                            <input type="number" placeholder="Número..." className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base md:text-lg font-mono focus:outline-none focus:border-pink-500 transition-colors text-center placeholder:text-white/20" value={manualNum} onChange={(e) => { setManualNum(e.target.value); setManualCheckResult(null); }} onKeyDown={(e) => e.key === 'Enter' && checkManualNumber()} />
-                                            <GlassButton onClick={checkManualNumber} disabled={!manualNum} variant="primary"><Icons.Check className="w-5 h-5" /></GlassButton>
+                                            <input type="number" aria-label="Número a comprobar" placeholder="Número..." className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base md:text-lg font-mono focus:outline-none focus:border-pink-500 transition-colors text-center placeholder:text-white/45" value={manualNum} onChange={(e) => { setManualNum(e.target.value); setManualCheckResult(null); }} onKeyDown={(e) => e.key === 'Enter' && checkManualNumber()} />
+                                            <GlassButton onClick={checkManualNumber} disabled={!manualNum} variant="primary" aria-label="Comprobar número"><Icons.Check className="w-5 h-5" /></GlassButton>
                                         </div>
                                         {manualCheckResult && (<div className={`w-full p-4 rounded-xl flex items-center justify-center gap-3 mb-6 font-bold text-lg ${manualCheckResult === 'FOUND' ? 'bg-green-500/20 text-green-300 border border-green-500/30' : 'bg-red-500/20 text-red-300 border border-red-500/30'}`}>{manualCheckResult === 'FOUND' ? (<><Icons.Check className="w-6 h-6" /> ¡SÍ!</>) : (<><Icons.X className="w-6 h-6" /> ¡NO!</>)}</div>)}
                                     </div>
@@ -1689,10 +1699,12 @@ const App = () => {
                             </div>
                         ) : (
                             <>
-                                <div className="absolute top-2 left-3 right-3 sm:top-3 sm:left-4 sm:right-4 md:top-4 md:left-6 md:right-6 flex justify-between text-[9px] sm:text-[10px] md:text-xs font-medium uppercase tracking-widest text-white/40">
+                                <div className="absolute top-2 left-3 right-3 sm:top-3 sm:left-4 sm:right-4 md:top-4 md:left-6 md:right-6 flex justify-between text-[9px] sm:text-[10px] md:text-xs font-medium uppercase tracking-widest text-white/55">
                                     <span>Última bola</span><span>{drawnNumbers.length} / 90</span>
                                 </div>
                                 <div className="relative z-10 flex flex-col items-center justify-center flex-1 py-2 sm:py-3 md:py-4">
+                                    {/* Lo que oye un lector de pantalla cuando sale una bola. */}
+                                    <p className="sr-only" aria-live="polite">{currentNumber ? `Bola ${currentNumber}` : ''}</p>
                                     {currentNumber ? (
                                         <div className="flex flex-col items-center gap-1 sm:gap-1.5 md:gap-2">
                                             <div className="drop-shadow-2xl filter transform transition-transform duration-300">
@@ -1712,7 +1724,7 @@ const App = () => {
                                     )}
                                 </div>
                                 <div className="flex justify-center gap-1 sm:gap-2 md:gap-3 px-2 sm:px-4 md:px-6 pb-3 sm:pb-4 md:pb-6 flex-shrink-0">
-                                    {history.slice(1).map((n, i) => (<div key={i} className="opacity-60 transform transition-all hover:scale-110 hover:opacity-100"><Ball3D number={n} size="sm" /></div>))}
+                                    {history.slice(1).map((n) => (<div key={n} className="opacity-60 transform transition-all hover:scale-110 hover:opacity-100"><Ball3D number={n} size="sm" /></div>))}
                                 </div>
                             </>
                         )}
@@ -1735,19 +1747,19 @@ const App = () => {
                                         <input type="number" min="0" step="0.5" value={cardPrice} onChange={(e) => setCardPrice(Math.max(0, parseFloat(e.target.value) || 0))} className="w-14 bg-white/5 border border-white/10 rounded px-2 py-1 text-sm focus:outline-none focus:border-pink-500" />
                                     </div>
                                     <div className="relative">
-                                        <button onClick={() => { setShowSpeedPopup(!showSpeedPopup); setShowVoicePopup(false); }} className="w-8 h-8 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-lg transition" title="Velocidad">
+                                        <button onClick={() => { setShowSpeedPopup(!showSpeedPopup); setShowVoicePopup(false); }} className="w-8 h-8 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-lg transition" title="Velocidad" aria-label="Velocidad del sorteo" aria-haspopup="true" aria-expanded={showSpeedPopup}>
                                             <Icons.Gauge className="w-5 h-5 text-white/60" />
                                         </button>
                                         {showSpeedPopup && (
                                             <div className="absolute top-full right-0 mt-1 w-40 bg-slate-900 border border-white/10 rounded-lg p-3 shadow-xl z-50">
                                                 <div className="text-[10px] text-white/50 mb-2 text-center">{getSpeedLabel(speed)}</div>
-                                                <input type="range" min="1500" max="6000" step="500" value={speed} onChange={(e) => setSpeed(Number(e.target.value))} className="w-full accent-white h-2" />
+                                                <input type="range" aria-label="Segundos entre bolas" min="1500" max="6000" step="500" value={speed} onChange={(e) => setSpeed(Number(e.target.value))} className="w-full accent-white h-2" />
                                             </div>
                                         )}
                                     </div>
                                     {voices.length > 0 && (
                                         <div className="relative">
-                                            <button onClick={() => { setShowVoicePopup(!showVoicePopup); setShowSpeedPopup(false); }} className="w-8 h-8 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-lg transition" title="Voz">
+                                            <button onClick={() => { setShowVoicePopup(!showVoicePopup); setShowSpeedPopup(false); }} className="w-8 h-8 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-lg transition" title="Voz" aria-label="Elegir voz" aria-haspopup="true" aria-expanded={showVoicePopup}>
                                                 <Icons.Mic className="w-5 h-5 text-white/60" />
                                             </button>
                                             {showVoicePopup && (
@@ -1771,7 +1783,7 @@ const App = () => {
                                     {gameStatus === 'PLAYING' ? 'PAUSAR' : drawnNumbers.length > 0 ? 'CONTINUAR' : 'EMPEZAR'}
                                 </GlassButton>
                                 {hasSavedGame && !isFiestaMode && (
-                                    <GlassButton onClick={clearSavedGame} className="min-h-[44px] md:min-h-[48px] px-3" title="Nueva Partida">
+                                    <GlassButton onClick={clearSavedGame} className="min-h-[44px] md:min-h-[48px] px-3" title="Nueva Partida" aria-label="Nueva partida">
                                         <Icons.RotateCcw className="w-4 h-4" />
                                     </GlassButton>
                                 )}
@@ -1799,15 +1811,15 @@ const App = () => {
                                         <input type="range" min="0" max="100" value={lineaPercent} onChange={(e) => { const v = parseInt(e.target.value); setLineaPercent(v); setBingoPercent(100 - v); }} className="flex-1 h-2 accent-cyan-400" style={{background: `linear-gradient(to right, #22d3ee ${lineaPercent}%, #eab308 ${lineaPercent}%)`}} />
                                         <span className="text-[10px] text-yellow-400 font-bold w-8 text-right">{bingoPercent}%</span>
                                     </div>
-                                    <div className="flex justify-between text-[9px] text-white/30 mt-0.5">
+                                    <div className="flex justify-between text-[9px] text-white/55 mt-0.5">
                                         <span>Línea</span>
                                         <span>Bingo</span>
                                     </div>
                                     {totalPot > 0 && (
                                         <div className="grid grid-cols-3 gap-1 text-center text-[10px] pt-1.5 mt-1.5 border-t border-white/10">
-                                            <div><span className="text-cyan-400 font-bold">{lineaPrize.toFixed(1)}</span> <span className="text-white/40">Línea</span></div>
-                                            <div><span className="text-yellow-400 font-bold">{bingoPrize.toFixed(1)}</span> <span className="text-white/40">Bingo</span></div>
-                                            <div><span className="text-green-400 font-bold">{totalPot.toFixed(1)}</span> <span className="text-white/40">Bote</span></div>
+                                            <div><span className="text-cyan-400 font-bold">{lineaPrize.toFixed(1)}</span> <span className="text-white/55">Línea</span></div>
+                                            <div><span className="text-yellow-400 font-bold">{bingoPrize.toFixed(1)}</span> <span className="text-white/55">Bingo</span></div>
+                                            <div><span className="text-green-400 font-bold">{totalPot.toFixed(1)}</span> <span className="text-white/55">Bote</span></div>
                                         </div>
                                     )}
                                 </div>
@@ -1840,7 +1852,7 @@ const App = () => {
                                                         ? 'bg-[#ef4444] text-white shadow-lg'
                                                         : isDrawn
                                                             ? 'bg-white text-black'
-                                                            : 'text-white/30'}
+                                                            : 'text-white/50'}
                                                 `}
                                                 style={{ height: '75%', aspectRatio: '1 / 1' }}
                                             >
@@ -1861,7 +1873,7 @@ const App = () => {
             {/* F2 — Modal de reclamación entrante (anfitrión verifica) */}
             {isFiestaMode && fiestaClaim && !fiestaWinner && (
                 <div className="absolute inset-0 z-[60] flex items-center justify-center p-4" style={{ background: 'rgba(5,6,9,0.82)', backdropFilter: 'blur(8px)' }}>
-                    <div className="w-full max-w-md rounded-[22px] p-5 md:p-6 animate-enter" style={{ background: '#13141b', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 18px 50px rgba(0,0,0,0.45)' }}>
+                    <div role="alertdialog" aria-modal="true" aria-labelledby="claim-title" className="w-full max-w-md rounded-[22px] p-5 md:p-6 animate-enter" style={{ background: '#13141b', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 18px 50px rgba(0,0,0,0.45)' }}>
                         <div className="flex items-center justify-between mb-4">
                             <span className="text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full" style={{ background: 'rgba(242,93,107,0.16)', color: '#ff9aa6', border: '1px solid rgba(242,93,107,0.4)' }}>● Partida en pausa</span>
                             <span className="text-[10px] font-semibold" style={{ color: fiestaClaim.sugerenciaValida ? '#3ed993' : '#ff9aa6' }}>
@@ -1874,7 +1886,7 @@ const App = () => {
                                 {(fiestaClaim.apodo || '?').charAt(0).toUpperCase()}
                             </div>
                             <div className="min-w-0">
-                                <p className="font-bold text-white truncate">{fiestaClaim.apodo}</p>
+                                <p id="claim-title" className="font-bold text-white truncate">{fiestaClaim.apodo}</p>
                                 <p className="text-sm font-bold" style={{ color: fiestaClaim.tipo === 'BINGO' ? '#ffce4d' : '#2fd4e3' }}>
                                     canta ¡{fiestaClaim.tipo}!
                                 </p>
@@ -1908,7 +1920,7 @@ const App = () => {
                         </div>
 
                         <div className="flex gap-3">
-                            <button onClick={() => resolveClaim('rechazar')} disabled={resolvingClaim} className="flex-1 rounded-[13px] py-3.5 font-bold transition-colors disabled:opacity-50" style={{ background: 'rgba(242,93,107,0.16)', color: '#ff9aa6', border: '1px solid rgba(242,93,107,0.4)' }}>
+                            <button autoFocus onClick={() => resolveClaim('rechazar')} disabled={resolvingClaim} className="flex-1 rounded-[13px] py-3.5 font-bold transition-colors disabled:opacity-50" style={{ background: 'rgba(242,93,107,0.16)', color: '#ff9aa6', border: '1px solid rgba(242,93,107,0.4)' }}>
                                 ✗ Rechazar
                             </button>
                             <button onClick={() => resolveClaim('aprobar')} disabled={resolvingClaim} className="flex-1 rounded-[13px] py-3.5 font-bold transition-colors disabled:opacity-50" style={{ background: 'rgba(62,217,147,0.16)', color: '#8af0c0', border: '1px solid rgba(62,217,147,0.4)' }}>
@@ -1921,7 +1933,7 @@ const App = () => {
 
             {/* F2 — Overlay de ganador */}
             {isFiestaMode && fiestaWinner && (
-                <div className="absolute inset-0 z-[70] flex flex-col items-center justify-center text-center p-6" style={{ background: 'rgba(5,6,9,0.92)', backdropFilter: 'blur(10px)' }}>
+                <div role="dialog" aria-modal="true" aria-label={`${fiestaWinner.apodo} gana la partida`} className="absolute inset-0 z-[70] flex flex-col items-center justify-center text-center p-6" style={{ background: 'rgba(5,6,9,0.92)', backdropFilter: 'blur(10px)' }}>
                     <p className="text-xs font-bold uppercase tracking-[0.3em] mb-6" style={{ color: 'rgba(255,255,255,0.5)' }}>Partida finalizada</p>
                     <div className="text-6xl mb-4">🏆</div>
                     <h1 className="text-3xl md:text-5xl font-black tracking-tight mb-2">
@@ -1930,7 +1942,7 @@ const App = () => {
                     <p className="text-lg font-bold mb-1" style={{ color: '#ffce4d' }}>
                         BINGO{fiestaWinner.premio > 0 ? ` · ${Number(fiestaWinner.premio).toFixed(0)} puntos` : ''}
                     </p>
-                    <button onClick={nuevaPartidaTrasGanador} className="mt-8 rounded-[14px] px-8 py-3.5 font-bold" style={{ background: 'linear-gradient(135deg,#8b5cf6,#ec4899 55%,#22d3ee)', color: '#fff' }}>
+                    <button autoFocus onClick={nuevaPartidaTrasGanador} className="mt-8 rounded-[14px] px-8 py-3.5 font-bold" style={{ background: 'linear-gradient(135deg,#8b5cf6,#ec4899 55%,#22d3ee)', color: '#fff' }}>
                         Nueva partida
                     </button>
                 </div>

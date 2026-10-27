@@ -8,6 +8,35 @@ Las entradas están escritas para el cliente: en lenguaje natural y sin detalles
 
 ---
 
+## [v1.03.00] - 2026-10-27
+
+### Añadido
+
+- Comando para rehacer los cartones del Modo Fiesta con el formato del bingo español. Hay que lanzarlo una vez después de publicar esta versión.
+
+### Corregido
+
+- Los cartones del Modo Fiesta siguen ahora el formato del bingo español: ninguna columna queda vacía y una columna puede llevar hasta 3 números. Antes podía salir un cartón con una columna sin números.
+- Un anfitrión ya no puede vaciar los cartones del sistema creando partidas una tras otra. Al crear una partida nueva, la anterior sin terminar se cierra y devuelve sus cartones.
+- No se puede crear una partida sin ningún jugador en la sala.
+- Si el administrador desactiva el Modo Fiesta, ya no se pueden abrir salas nuevas. Las partidas en curso siguen.
+- Un jugador ya no puede pausar la partida una y otra vez: puede cantar como mucho 4 veces cada 5 minutos.
+
+### Seguridad
+
+- Adivinar el PIN de una sala probando desde muchas conexiones distintas ya no funciona. Tras 40 PIN incorrectos en 15 minutos, la sala deja de admitir entradas durante un rato.
+- El PIN ya no viaja en la dirección que abre el QR hasta el servidor, así que no queda guardado en ningún registro. Los QR antiguos siguen funcionando.
+
+### Mejorado
+
+- El servidor trabaja menos cuando los móviles preguntan por la partida y no ha cambiado nada.
+- Accesibilidad:
+  - Se puede hacer zoom en el móvil.
+  - Los textos pequeños tienen más contraste.
+  - Un lector de pantalla anuncia cada bola, si está en el cartón del jugador y cuándo alguien canta.
+  - Los botones con solo un icono tienen nombre.
+  - Si el sistema pide menos movimiento, se quitan los rebotes y el confeti.
+
 ## [v1.02.00] - 2026-10-27
 
 ### Añadido

@@ -176,7 +176,14 @@ php bin/console make:migration
 
 # Liberar salas sin actividad (por defecto, 12 horas)
 php bin/console app:rooms:release-stale --hours=12
+
+# Rehacer los cartones libres del pool con el generador actual
+php bin/console app:pool:regenerate-cards
 ```
+
+`app:pool:regenerate-cards` solo toca los cartones que no está usando ninguna
+partida. Si al lanzarlo hay partidas en curso, se vuelve a lanzar más tarde para
+que entren los que faltan.
 
 En producción, `app:rooms:release-stale` va como tarea programada de Coolify
 sobre el servicio `php`, cada hora (`0 * * * *`). Sin ella, una sala que el

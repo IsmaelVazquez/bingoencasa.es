@@ -106,3 +106,13 @@ select {
 .custom-scrollbar::-webkit-scrollbar { width: 4px; }
 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
 .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
+
+/* El zoom con dos dedos queda permitido; esto solo quita el retardo y el zoom del doble toque. */
+html { touch-action: manipulation; }
+
+/* Movimiento reducido: los elementos aparecen sin desplazarse ni rebotar. */
+@media (prefers-reduced-motion: reduce) {
+    .animate-enter, .animate-slide-up { animation: fade-in 150ms ease-out; }
+    .animate-pulse-slow, .animate-pulse, .animate-bounce, .animate-spin-slow { animation: none; }
+}
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }

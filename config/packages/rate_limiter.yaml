@@ -11,17 +11,35 @@ framework:
             policy: sliding_window
             limit: 10
             interval: '15 minutes'
+        # PIN fallidos por sala, vengan de la IP que vengan: con 4 dígitos,
+        # cambiar de IP no debe bastar para probarlos todos. Al pasarse, la sala
+        # no admite más entradas durante un rato, ni siquiera con el PIN bueno.
+        fiesta_pin_sala:
+            policy: sliding_window
+            limit: 40
+            interval: '15 minutes'
+        # Cantos por jugador. Cada canto pausa la partida de todos.
+        fiesta_reclamacion:
+            policy: sliding_window
+            limit: 4
+            interval: '5 minutes'
 
-# En los tests cada petición empieza de cero: si no, los tests de ayer
-# agotan el cupo de salas de hoy.
+# En los tests los límites viven en su propio pool, que FiestaTestCase vacía
+# antes de cada test: si no, los tests de ayer agotan el cupo de salas de hoy.
+# Va a disco y no a memoria porque el cliente de test reinicia el kernel en
+# cada petición, y los tests de concurrencia corren en otros procesos.
 when@test:
     framework:
         cache:
             pools:
                 test.rate_limiter_pool:
-                    adapter: cache.adapter.array
+                    adapter: cache.adapter.filesystem
         rate_limiter:
             fiesta_crear_sala:
                 cache_pool: test.rate_limiter_pool
             fiesta_pin_fallido:
+                cache_pool: test.rate_limiter_pool
+            fiesta_pin_sala:
+                cache_pool: test.rate_limiter_pool
+            fiesta_reclamacion:
                 cache_pool: test.rate_limiter_pool

@@ -36,7 +36,11 @@ class FiestaWebController extends AbstractController
     ) {}
 
     #[Route('/unirse', name: 'unirse', methods: ['GET', 'POST'])]
-    public function unirse(Request $request, RateLimiterFactoryInterface $fiestaPinFallidoLimiter): Response
+    public function unirse(
+        Request $request,
+        RateLimiterFactoryInterface $fiestaPinFallidoLimiter,
+        RateLimiterFactoryInterface $fiestaPinSalaLimiter,
+    ): Response
     {
         $error = null;
         $codigoFromQr = $request->query->get('codigo', '');
@@ -47,16 +51,22 @@ class FiestaWebController extends AbstractController
             $pin = trim((string) $request->request->get('pin', ''));
             $apodo = Player::normalizeNickname($request->request->get('apodo'));
             $limiter = $fiestaPinFallidoLimiter->create($request->getClientIp() . '|' . $codigo);
+            $roomLimiter = $fiestaPinSalaLimiter->create($codigo);
 
             if ($codigo === '' || $pin === '' || $apodo === null) {
                 $error = 'Por favor, introduce el código de sala, PIN y tu apodo.';
             } elseif ($limiter->consume(0)->getRemainingTokens() === 0) {
                 $error = 'Demasiados intentos fallidos. Espera unos minutos y vuelve a probar.';
+            } elseif ($roomLimiter->consume(0)->getRemainingTokens() === 0) {
+                $error = 'Esta sala ha recibido demasiados PIN incorrectos. Espera unos minutos y vuelve a probar.';
             } else {
                 $room = $this->roomRepository->findOneBy(['code' => $codigo]);
 
                 if (!$room || $room->isAvailable() || !hash_equals((string) $room->getPin(), $pin)) {
                     $limiter->consume();
+                    if ($room) {
+                        $roomLimiter->consume();
+                    }
                     $error = 'Código de sala o PIN incorrectos.';
                 } else {
                     // Con la sala bloqueada, dos invitados a la vez no pueden coger

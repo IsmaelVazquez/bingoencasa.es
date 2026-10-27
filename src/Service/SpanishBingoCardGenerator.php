@@ -2,25 +2,38 @@
 
 namespace App\Service;
 
+/**
+ * Cartón de bingo español de 90 bolas: 3 filas y 9 columnas, 15 números,
+ * 5 por fila y de 1 a 3 por columna. La columna 1 lleva del 1 al 9, la 2 del
+ * 10 al 19… y la última del 80 al 90. Dentro de cada columna los números
+ * crecen de arriba abajo.
+ */
 class SpanishBingoCardGenerator
 {
     private const COLUMNS = 9;
     private const ROWS = 3;
     private const NUMBERS_PER_ROW = 5;
-    private const MAX_PER_COLUMN = 2;
+    private const MIN_PER_COLUMN = 1;
+    private const MAX_PER_COLUMN = 3;
     private const TOTAL_NUMBERS = 15;
 
+    /** @return array{grid: array<int, array<int, ?int>>, flatNumbers: int[]} */
     public function generateCard(): array
     {
-        $grid = $this->createValidGrid();
-        $flatNumbers = $this->extractFlatNumbers($grid);
+        $grid = $this->placeNumbers($this->layout($this->columnCounts()));
+
+        if (!$this->isValid($grid)) {
+            // No debería pasar nunca: el reparto de abajo siempre es posible.
+            throw new \LogicException('Cartón de bingo inválido');
+        }
 
         return [
             'grid' => $grid,
-            'flatNumbers' => $flatNumbers,
+            'flatNumbers' => $this->extractFlatNumbers($grid),
         ];
     }
 
+    /** @return array<int, array{grid: array<int, array<int, ?int>>, flatNumbers: int[]}> */
     public function generateMultipleCards(int $count): array
     {
         $cards = [];
@@ -39,227 +52,128 @@ class SpanishBingoCardGenerator
         return $cards;
     }
 
-    private function createValidGrid(): array
+    /**
+     * Cuántos números lleva cada columna: uno en cada una y los 6 restantes
+     * repartidos al azar, sin pasar de 3 por columna.
+     *
+     * @return int[]
+     */
+    private function columnCounts(): array
     {
-        $maxAttempts = 1000;
-        $attempt = 0;
+        $counts = array_fill(0, self::COLUMNS, self::MIN_PER_COLUMN);
 
-        while ($attempt < $maxAttempts) {
-            $attempt++;
-            $grid = $this->attemptCreateGrid();
-
-            if ($grid !== null && $this->validateGrid($grid)) {
-                return $grid;
-            }
+        for ($left = self::TOTAL_NUMBERS - self::COLUMNS; $left > 0; $left--) {
+            $open = array_keys(array_filter($counts, fn(int $c) => $c < self::MAX_PER_COLUMN));
+            $counts[$open[random_int(0, count($open) - 1)]]++;
         }
 
-        throw new \RuntimeException('Could not generate valid bingo card after ' . $maxAttempts . ' attempts');
+        return $counts;
     }
 
-    private function attemptCreateGrid(): ?array
+    /**
+     * Qué celdas llevan número. Se colocan primero las columnas más llenas y
+     * cada una en las filas a las que más números les faltan; así todas las
+     * filas acaban con 5.
+     *
+     * @param int[] $counts
+     * @return array<int, array<int, bool>>
+     */
+    private function layout(array $counts): array
+    {
+        $filled = array_fill(0, self::ROWS, array_fill(0, self::COLUMNS, false));
+        $missing = array_fill(0, self::ROWS, self::NUMBERS_PER_ROW);
+
+        $columns = range(0, self::COLUMNS - 1);
+        shuffle($columns);
+        usort($columns, fn(int $a, int $b) => $counts[$b] <=> $counts[$a]);
+
+        foreach ($columns as $col) {
+            $rows = range(0, self::ROWS - 1);
+            shuffle($rows);
+            usort($rows, fn(int $a, int $b) => $missing[$b] <=> $missing[$a]);
+
+            foreach (array_slice($rows, 0, $counts[$col]) as $row) {
+                $filled[$row][$col] = true;
+                $missing[$row]--;
+            }
+        }
+
+        return $filled;
+    }
+
+    /**
+     * @param array<int, array<int, bool>> $filled
+     * @return array<int, array<int, ?int>>
+     */
+    private function placeNumbers(array $filled): array
     {
         $grid = array_fill(0, self::ROWS, array_fill(0, self::COLUMNS, null));
-        $columnNumbers = $this->getColumnNumberRanges();
 
         for ($col = 0; $col < self::COLUMNS; $col++) {
-            $availableNumbers = $columnNumbers[$col];
-            shuffle($availableNumbers);
+            $rows = array_keys(array_filter(array_column($filled, $col)));
+            $numbers = $this->columnRange($col);
+            shuffle($numbers);
+            $numbers = array_slice($numbers, 0, count($rows));
+            sort($numbers);
 
-            $numbersInColumn = rand(0, min(self::MAX_PER_COLUMN, count($availableNumbers)));
-
-            if ($numbersInColumn > 0) {
-                $selectedNumbers = array_slice($availableNumbers, 0, $numbersInColumn);
-                sort($selectedNumbers);
-
-                $availableRows = [0, 1, 2];
-                shuffle($availableRows);
-                $selectedRows = array_slice($availableRows, 0, $numbersInColumn);
-                sort($selectedRows);
-
-                foreach ($selectedRows as $i => $row) {
-                    $grid[$row][$col] = $selectedNumbers[$i];
-                }
+            foreach ($rows as $i => $row) {
+                $grid[$row][$col] = $numbers[$i];
             }
         }
-
-        for ($row = 0; $row < self::ROWS; $row++) {
-            $filledCount = count(array_filter($grid[$row], fn($v) => $v !== null));
-
-            while ($filledCount < self::NUMBERS_PER_ROW) {
-                $emptyColumns = [];
-                for ($col = 0; $col < self::COLUMNS; $col++) {
-                    if ($grid[$row][$col] === null) {
-                        $columnCount = $this->countInColumn($grid, $col);
-                        if ($columnCount < self::MAX_PER_COLUMN) {
-                            $emptyColumns[] = $col;
-                        }
-                    }
-                }
-
-                if (empty($emptyColumns)) {
-                    return null;
-                }
-
-                $col = $emptyColumns[array_rand($emptyColumns)];
-                $availableNumbers = $this->getAvailableNumbersForCell($grid, $row, $col, $columnNumbers[$col]);
-
-                if (empty($availableNumbers)) {
-                    return null;
-                }
-
-                $grid[$row][$col] = $availableNumbers[array_rand($availableNumbers)];
-                $filledCount++;
-            }
-
-            while ($filledCount > self::NUMBERS_PER_ROW) {
-                $filledColumns = [];
-                for ($col = 0; $col < self::COLUMNS; $col++) {
-                    if ($grid[$row][$col] !== null) {
-                        $filledColumns[] = $col;
-                    }
-                }
-
-                $col = $filledColumns[array_rand($filledColumns)];
-                $grid[$row][$col] = null;
-                $filledCount--;
-            }
-        }
-
-        $this->ensureColumnOrder($grid);
 
         return $grid;
     }
 
-    private function getColumnNumberRanges(): array
+    /** @return int[] */
+    private function columnRange(int $col): array
     {
-        return [
+        return match ($col) {
             0 => range(1, 9),
-            1 => range(10, 19),
-            2 => range(20, 29),
-            3 => range(30, 39),
-            4 => range(40, 49),
-            5 => range(50, 59),
-            6 => range(60, 69),
-            7 => range(70, 79),
-            8 => range(80, 90),
-        ];
+            self::COLUMNS - 1 => range(80, 90),
+            default => range($col * 10, $col * 10 + 9),
+        };
     }
 
-    private function countInColumn(array $grid, int $col): int
+    /** @param array<int, array<int, ?int>> $grid */
+    public function isValid(array $grid): bool
     {
-        $count = 0;
-        for ($row = 0; $row < self::ROWS; $row++) {
-            if ($grid[$row][$col] !== null) {
-                $count++;
-            }
-        }
-        return $count;
-    }
-
-    private function getAvailableNumbersForCell(array $grid, int $row, int $col, array $columnRange): array
-    {
-        $usedInColumn = [];
-        for ($r = 0; $r < self::ROWS; $r++) {
-            if ($grid[$r][$col] !== null) {
-                $usedInColumn[] = $grid[$r][$col];
-            }
-        }
-
-        $available = array_diff($columnRange, $usedInColumn);
-
-        if ($row > 0) {
-            $above = $grid[$row - 1][$col];
-            if ($above !== null) {
-                $available = array_filter($available, fn($n) => $n > $above);
-            }
-        }
-
-        if ($row < self::ROWS - 1) {
-            $below = $grid[$row + 1][$col];
-            if ($below !== null) {
-                $available = array_filter($available, fn($n) => $n < $below);
-            }
-        }
-
-        return array_values($available);
-    }
-
-    private function ensureColumnOrder(array &$grid): void
-    {
-        for ($col = 0; $col < self::COLUMNS; $col++) {
-            $numbers = [];
-            $rows = [];
-
-            for ($row = 0; $row < self::ROWS; $row++) {
-                if ($grid[$row][$col] !== null) {
-                    $numbers[] = $grid[$row][$col];
-                    $rows[] = $row;
-                }
-            }
-
-            if (count($numbers) > 1) {
-                sort($numbers);
-                foreach ($rows as $i => $row) {
-                    $grid[$row][$col] = $numbers[$i];
-                }
-            }
-        }
-    }
-
-    private function validateGrid(array $grid): bool
-    {
-        $totalNumbers = 0;
-
-        for ($row = 0; $row < self::ROWS; $row++) {
-            $rowCount = count(array_filter($grid[$row], fn($v) => $v !== null));
-            if ($rowCount !== self::NUMBERS_PER_ROW) {
-                return false;
-            }
-            $totalNumbers += $rowCount;
-        }
-
-        if ($totalNumbers !== self::TOTAL_NUMBERS) {
+        if (count($grid) !== self::ROWS) {
             return false;
         }
 
-        for ($col = 0; $col < self::COLUMNS; $col++) {
-            $colCount = $this->countInColumn($grid, $col);
-            if ($colCount > self::MAX_PER_COLUMN) {
+        foreach ($grid as $row) {
+            if (count($row) !== self::COLUMNS || count(array_filter($row, fn($v) => $v !== null)) !== self::NUMBERS_PER_ROW) {
                 return false;
             }
         }
 
-        $columnRanges = $this->getColumnNumberRanges();
         for ($col = 0; $col < self::COLUMNS; $col++) {
-            $prevValue = null;
-            for ($row = 0; $row < self::ROWS; $row++) {
-                $value = $grid[$row][$col];
-                if ($value !== null) {
-                    if (!in_array($value, $columnRanges[$col])) {
-                        return false;
-                    }
-                    if ($prevValue !== null && $value <= $prevValue) {
-                        return false;
-                    }
-                    $prevValue = $value;
-                }
+            $values = array_values(array_filter(array_column($grid, $col), fn($v) => $v !== null));
+            if (count($values) < self::MIN_PER_COLUMN || count($values) > self::MAX_PER_COLUMN) {
+                return false;
+            }
+            $sorted = $values;
+            sort($sorted);
+            if ($sorted !== $values || count(array_unique($values)) !== count($values)) {
+                return false;
+            }
+            if (array_diff($values, $this->columnRange($col)) !== []) {
+                return false;
             }
         }
 
         return true;
     }
 
+    /**
+     * @param array<int, array<int, ?int>> $grid
+     * @return int[]
+     */
     private function extractFlatNumbers(array $grid): array
     {
-        $numbers = [];
-        foreach ($grid as $row) {
-            foreach ($row as $cell) {
-                if ($cell !== null) {
-                    $numbers[] = $cell;
-                }
-            }
-        }
+        $numbers = array_values(array_filter(array_merge(...$grid), fn($v) => $v !== null));
         sort($numbers);
+
         return $numbers;
     }
 }

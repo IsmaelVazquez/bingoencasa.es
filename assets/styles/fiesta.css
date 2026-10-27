@@ -129,3 +129,22 @@ html, body {
     .f-btn:active:not(:disabled) { transform: none; }
     .f-btn.is-armed::after { animation: none; }
 }
+
+/* El zoom con dos dedos queda permitido; esto solo quita el retardo y el zoom del doble toque. */
+html { touch-action: manipulation; }
+
+/* Movimiento reducido: sin rebotes, pulsos ni confeti. El spinner se queda porque indica espera. */
+@media (prefers-reduced-motion: reduce) {
+    .f-pop, .f-pulse { animation: none; }
+    .f-confetti { display: none; }
+}
+
+/* Solo para lectores de pantalla. */
+.f-sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}

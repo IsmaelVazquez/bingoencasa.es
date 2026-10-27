@@ -74,6 +74,12 @@ class FiestaController extends AbstractController
     #[Route('/salas', name: 'crear_sala', methods: ['POST'])]
     public function crearSala(Request $request, RateLimiterFactoryInterface $fiestaCrearSalaLimiter): JsonResponse
     {
+        if (!$this->configRepository->isEnabled('modo_fiesta_enabled', true)) {
+            return $this->json([
+                'exito' => false,
+                'error' => 'El Modo Fiesta está desactivado en este momento.',
+            ], 503);
+        }
         if (!$fiestaCrearSalaLimiter->create($request->getClientIp())->consume()->isAccepted()) {
             return $this->json([
                 'exito' => false,
@@ -197,6 +203,20 @@ class FiestaController extends AbstractController
                     // Con la sala bloqueada nadie entra mientras se reparten los cartones.
                     $this->em->refresh($room, LockMode::PESSIMISTIC_WRITE);
 
+                    if ($room->getPlayers()->isEmpty()) {
+                        throw new \LengthException('Espera a que se una al menos un jugador.');
+                    }
+
+                    // Una partida sin terminar de esta sala (un reintento, una
+                    // pestaña vieja) se cierra y devuelve sus cartones: si no,
+                    // cada intento se quedaría con un lote más del pool.
+                    foreach ($this->gameRepository->findBy(['room' => $room]) as $previous) {
+                        if ($previous->getStatus() !== GameStatus::FINALIZADA->value) {
+                            $this->lockGame($previous);
+                            $this->finalizeGame($previous);
+                        }
+                    }
+
                     $totalCartonesNecesarios = $room->getPlayers()->count() * $cartonesPorJugador;
                     $cardTemplates = $this->cardTemplateRepository->getAvailableCards($totalCartonesNecesarios);
                     if (count($cardTemplates) < $totalCartonesNecesarios) {
@@ -234,6 +254,8 @@ class FiestaController extends AbstractController
                     return [$game, $templateIndex];
                 }
             );
+        } catch (\LengthException $e) {
+            return $this->json(['exito' => false, 'error' => $e->getMessage()], 400);
         } catch (\OverflowException $e) {
             return $this->json([
                 'exito' => false,
@@ -480,44 +502,21 @@ class FiestaController extends AbstractController
             return $this->json(['exito' => false, 'error' => 'Partida no encontrada'], 404);
         }
 
-        $bolasSacadas = $this->drawnNumbersNewestFirst($game);
-        $bolaActual = count($bolasSacadas) > 0 ? $bolasSacadas[0] : null;
-        
-        // Firma de reclamaciones para el ETag (nuevas pendientes / resueltas / ganador).
-        $claimSig = [];
-        foreach ($game->getClaims() as $c) {
-            $claimSig[] = $c->getId()->toBase32() . ':' . $c->getStatus();
-        }
-        sort($claimSig);
-
-        // Generate ETag based on state that changes
-        $etag = md5(json_encode([
-            $game->getStatus(),
-            count($bolasSacadas),
-            $bolaActual,
-            $game->getPrizeTarget(),
-            implode(',', $claimSig),
-        ]));
-        
-        // Check If-None-Match header for conditional request
+        // Los móviles preguntan cada segundo y medio y casi siempre no ha
+        // cambiado nada: el ETag sale de una sola consulta, sin cargar bolas
+        // ni reclamaciones.
+        $etag = '"' . $this->gameRepository->pollSignature($game) . '"';
         if ($request->headers->get('If-None-Match') === $etag) {
             return new JsonResponse(null, 304);
         }
 
-        // Get players (only for full response)
-        $jugadores = [];
-        $playersAdded = [];
-        foreach ($game->getCards() as $card) {
-            $player = $card->getPlayer();
-            $playerId = $player->getId()->toBase32();
-            if (!isset($playersAdded[$playerId])) {
-                $jugadores[] = [
-                    'jugadorId' => $playerId,
-                    'apodo' => $player->getNickname(),
-                ];
-                $playersAdded[$playerId] = true;
-            }
-        }
+        $bolasSacadas = $this->drawnNumbersNewestFirst($game);
+        $bolaActual = count($bolasSacadas) > 0 ? $bolasSacadas[0] : null;
+
+        $jugadores = array_map(fn(Player $p) => [
+            'jugadorId' => $p->getId()->toBase32(),
+            'apodo' => $p->getNickname(),
+        ], $this->playerRepository->findWithCardsInGame($game));
 
         // Reclamación activa (pendiente) y ganador (bingo aprobado).
         $reclamacionActiva = null;
@@ -609,7 +608,7 @@ class FiestaController extends AbstractController
     // ==================== RECLAMACIONES ====================
 
     #[Route('/reclamaciones', name: 'crear_reclamacion', methods: ['POST'])]
-    public function crearReclamacion(Request $request): JsonResponse
+    public function crearReclamacion(Request $request, RateLimiterFactoryInterface $fiestaReclamacionLimiter): JsonResponse
     {
         $data = $this->jsonBody($request);
 
@@ -634,6 +633,12 @@ class FiestaController extends AbstractController
             || $card->getPlayer() !== $player
             || $card->getGame() !== $game) {
             return $this->forbidden();
+        }
+        if (!$fiestaReclamacionLimiter->create($player->getId()->toBase32())->consume()->isAccepted()) {
+            return $this->json([
+                'exito' => false,
+                'error' => 'Has cantado muchas veces seguidas. Espera un par de minutos.',
+            ], 429);
         }
         // Con la partida bloqueada, dos reclamaciones simultáneas no pueden
         // quedar las dos pendientes.
