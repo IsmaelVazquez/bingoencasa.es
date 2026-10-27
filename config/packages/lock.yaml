@@ -1,0 +1,5 @@
+framework:
+    # Bloqueo por fichero: el estado de los limitadores vive en la caché local
+    # del contenedor php, así que basta con bloquear dentro de él. Sin bloqueo,
+    # dos intentos simultáneos podían leer el mismo cupo y pasar los dos.
+    lock: 'flock'

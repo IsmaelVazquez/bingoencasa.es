@@ -81,7 +81,21 @@ class HardeningTest extends FiestaTestCase
         $guest->request('POST', '/fiesta/unirse', ['codigo' => $code, 'pin' => $pin, 'apodo' => 'Ana'], server: ['REMOTE_ADDR' => '10.20.1.1']);
 
         self::assertFalse($guest->getResponse()->isRedirect());
-        self::assertStringContainsString('demasiados PIN incorrectos', (string) $guest->getResponse()->getContent());
+        self::assertStringContainsString('demasiados intentos', (string) $guest->getResponse()->getContent());
+    }
+
+    public function testPlayersAlreadyInTheRoomCanRejoinDuringALockout(): void
+    {
+        $code = $this->createRoom()['salaCodigo'];
+        [$ana, $anaId] = $this->join($code, 'Ana');
+
+        $guest = $this->newBrowser();
+        for ($i = 0; $i < 40; $i++) {
+            $guest->request('POST', '/fiesta/unirse', ['codigo' => $code, 'pin' => 'xxxx', 'apodo' => 'X' . $i], server: ['REMOTE_ADDR' => '10.20.0.' . $i]);
+        }
+
+        [, $again] = $this->join($code, 'Ana', $ana);
+        self::assertSame($anaId, $again);
     }
 
     public function testStateEtagOnlyChangesWithTheGame(): void

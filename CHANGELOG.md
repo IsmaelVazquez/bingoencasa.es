@@ -8,6 +8,13 @@ Las entradas están escritas para el cliente: en lenguaje natural y sin detalles
 
 ---
 
+## [v1.03.01] - 2026-10-27
+
+### Seguridad
+
+- El límite de intentos de PIN por sala ya no se puede saltar mandando muchos intentos a la vez.
+- Si alguien provoca el bloqueo de una sala a base de PIN incorrectos, los jugadores que ya estaban dentro pueden seguir entrando. Solo esperan los invitados nuevos.
+
 ## [v1.03.00] - 2026-10-27
 
 ### Añadido

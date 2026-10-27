@@ -11,9 +11,11 @@ framework:
             policy: sliding_window
             limit: 10
             interval: '15 minutes'
-        # PIN fallidos por sala, vengan de la IP que vengan: con 4 dígitos,
-        # cambiar de IP no debe bastar para probarlos todos. Al pasarse, la sala
-        # no admite más entradas durante un rato, ni siquiera con el PIN bueno.
+        # Intentos de entrar por sala, vengan de la IP que vengan: con 4 dígitos,
+        # cambiar de IP no debe bastar para probarlos todos. Cuentan también los
+        # aciertos (una sala tiene como mucho 15 jugadores). Al pasarse, la sala
+        # no admite invitados nuevos durante un rato; quien ya estaba dentro sí
+        # puede volver a entrar.
         fiesta_pin_sala:
             policy: sliding_window
             limit: 40

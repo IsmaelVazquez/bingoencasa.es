@@ -12,6 +12,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\RateLimiter\LimiterInterface;
 use Symfony\Component\RateLimiter\RateLimiterFactoryInterface;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Uid\Ulid;
@@ -57,16 +58,13 @@ class FiestaWebController extends AbstractController
                 $error = 'Por favor, introduce el código de sala, PIN y tu apodo.';
             } elseif ($limiter->consume(0)->getRemainingTokens() === 0) {
                 $error = 'Demasiados intentos fallidos. Espera unos minutos y vuelve a probar.';
-            } elseif ($roomLimiter->consume(0)->getRemainingTokens() === 0) {
-                $error = 'Esta sala ha recibido demasiados PIN incorrectos. Espera unos minutos y vuelve a probar.';
+            } elseif (!$this->mayTryPin($codigo, $roomLimiter)) {
+                $error = 'Esta sala ha recibido demasiados intentos. Espera unos minutos y vuelve a probar.';
             } else {
                 $room = $this->roomRepository->findOneBy(['code' => $codigo]);
 
                 if (!$room || $room->isAvailable() || !hash_equals((string) $room->getPin(), $pin)) {
                     $limiter->consume();
-                    if ($room) {
-                        $roomLimiter->consume();
-                    }
                     $error = 'Código de sala o PIN incorrectos.';
                 } else {
                     // Con la sala bloqueada, dos invitados a la vez no pueden coger
@@ -142,6 +140,22 @@ class FiestaWebController extends AbstractController
             'player' => $player,
             'game' => $game,
         ]);
+    }
+
+    /**
+     * Límite de intentos por sala, vengan de la IP que vengan. Cada intento
+     * descuenta antes de comprobar el PIN: si se descontara solo al fallar,
+     * muchas peticiones a la vez pasarían todas la comprobación. Quien ya está
+     * en la sala (vuelve a entrar con su sesión) no cuenta ni se queda fuera.
+     */
+    private function mayTryPin(string $codigo, LimiterInterface $roomLimiter): bool
+    {
+        $room = $this->roomRepository->findOneBy(['code' => $codigo]);
+        if ($room && !$room->isAvailable() && $this->access->canSeeRoom($room)) {
+            return true;
+        }
+
+        return $roomLimiter->consume()->isAccepted();
     }
 
     private function findPlayerById(string $id): ?Player
