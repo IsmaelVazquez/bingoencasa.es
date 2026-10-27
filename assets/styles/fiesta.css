@@ -65,3 +65,67 @@ html, body {
 .f-btn-bingo { background: rgba(255,206,77,0.16); border: 1px solid rgba(255,206,77,0.4); color: #ffe08a; }
 .f-btn:disabled { opacity: 0.4; }
 .f-falta { background: rgba(255,176,32,0.14); border: 1px solid rgba(255,176,32,0.4); color: #ffd089; }
+
+/* Botones de cantar: el primer toque los arma y la barra inferior marca los 3 s para confirmar. */
+.f-btn {
+    position: relative;
+    overflow: hidden;
+    touch-action: manipulation;
+    transition: transform 140ms ease-out, background-color 150ms ease, color 150ms ease, border-color 150ms ease;
+}
+.f-btn:active:not(:disabled) { transform: scale(0.97); }
+.f-btn:focus-visible { outline: 2px solid #e7e8ee; outline-offset: 2px; }
+.f-btn-linea.is-armed { background: #2fd4e3; border-color: #2fd4e3; color: #06262a; }
+.f-btn-bingo.is-armed { background: #ffce4d; border-color: #ffce4d; color: #3a2a00; }
+.f-btn.is-armed::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 4px;
+    background: currentColor;
+    opacity: 0.35;
+    transform-origin: left;
+    animation: f-arm 3s linear forwards;
+}
+@keyframes f-arm { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+
+/* Avisos flotantes del jugador: conexión perdida y errores al cantar. */
+.f-net, .f-toast {
+    position: fixed;
+    left: 50%;
+    z-index: 80;
+    width: max-content;
+    max-width: calc(100% - 2rem);
+    opacity: 0;
+    pointer-events: none;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    transition: opacity 150ms ease-out, transform 150ms ease-out;
+}
+.f-net {
+    top: max(0.75rem, env(safe-area-inset-top));
+    transform: translate(-50%, -8px);
+    background: #2b2112;
+    border: 1px solid rgba(255, 176, 32, 0.4);
+    color: #ffd089;
+}
+.f-toast {
+    bottom: calc(6.5rem + env(safe-area-inset-bottom));
+    transform: translate(-50%, 8px);
+    background: #2b1519;
+    border: 1px solid rgba(242, 93, 107, 0.4);
+    color: #ff9aa6;
+}
+.f-net.is-visible, .f-toast.is-visible {
+    opacity: 1;
+    transform: translate(-50%, 0);
+    transition-duration: 220ms;
+    transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .f-net, .f-toast { transform: translate(-50%, 0); }
+    .f-btn:active:not(:disabled) { transform: none; }
+    .f-btn.is-armed::after { animation: none; }
+}

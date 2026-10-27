@@ -5,6 +5,17 @@
 {% block body %}
 <div id="app" class="flex-1 flex flex-col w-full max-w-lg mx-auto"></div>
 
+{# Fuera de #app: el polling no los reconstruye, así un toque nunca cae en un botón que se está sustituyendo. #}
+<div id="actions" class="fixed bottom-0 left-0 right-0 px-4 pt-4 flex gap-3 max-w-lg mx-auto" style="background:linear-gradient(to top,#0a0b0f 60%,transparent);padding-bottom:max(1rem,env(safe-area-inset-bottom))" hidden>
+    <button type="button" data-claim="LINEA" class="f-btn f-btn-linea flex-1 rounded-2xl py-4 font-bold">¡LÍNEA!</button>
+    <button type="button" data-claim="BINGO" class="f-btn f-btn-bingo flex-1 rounded-2xl py-4 font-bold">¡BINGO!</button>
+</div>
+<div id="net" class="f-net rounded-full px-4 py-2 text-sm font-semibold flex items-center gap-2" role="status">
+    <span class="f-spin rounded-full flex-shrink-0" style="width:14px;height:14px;border:2px solid rgba(255,208,137,0.3);border-top-color:#ffd089"></span>
+    <span>Sin conexión. Reintentando…</span>
+</div>
+<div id="toast" class="f-toast rounded-2xl px-4 py-3 text-sm font-semibold text-center" role="alert"></div>
+
 <script>
 const jugadorId = {{ player.id.toBase32|json_encode|raw }};
 const apodoPropio = {{ player.nickname|json_encode|raw }};
@@ -19,8 +30,18 @@ let players = [];
 let estado = null;          // último estado completo del servidor
 let view = 'espera';        // espera | jugando | comprobando | aviso | ganaste | fin
 let pendingClaim = null;    // tipo reclamado mientras esperamos confirmación
+let pendingClaimAt = 0;
 
-let pollInterval = 1500;
+let armed = null;           // botón tocado una vez, a la espera de confirmar
+let armTimer = null;
+let roomClosed = false;     // la sala se liberó: el jugador ya no pertenece a ella
+
+const POLL_BASE = 1500;
+const FETCH_TIMEOUT = 8000;
+let pollInterval = POLL_BASE;
+let pollTimer = null;
+let polling = false;
+let stopped = false;
 let errorCount = 0;
 let lobbyEtag = null;
 let estadoEtag = null;
@@ -48,9 +69,6 @@ function releaseWake() {
     try { if (wakeLock) { wakeLock.release(); wakeLock = null; } } catch (e) {}
     try { if (window.bingoNative) window.bingoNative.keepAwake(false); } catch (e) {}
 }
-document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && view === 'jugando') requestWake();
-});
 
 // ---------- helpers de cartón ----------
 function rowMissing(row) {
@@ -127,13 +145,17 @@ function objetivoPill() {
     return `<span class="text-[11px] font-bold px-2 py-0.5 rounded-full" style="color:${color};background:rgba(255,255,255,0.06)">Objetivo: ${obj}</span>`;
 }
 
+function points(value) {
+    return Number(value ?? 0).toFixed(0);
+}
+
 function prizesBar() {
     if (!estado || !(estado.boteTotal > 0)) return '';
     return `<div class="rounded-xl p-3" style="background:#13141b;border:1px solid rgba(255,255,255,0.06)">
         <div class="flex justify-center gap-6 text-sm">
-            <div class="text-center"><span class="text-white/40 text-xs">Línea</span><p class="font-bold" style="color:#2fd4e3">${estado.premioLinea.toFixed(0)}</p></div>
-            <div class="text-center"><span class="text-white/40 text-xs">Bingo</span><p class="font-bold" style="color:#ffce4d">${estado.premioBingo.toFixed(0)}</p></div>
-            <div class="text-center"><span class="text-white/40 text-xs">Bote</span><p class="font-bold" style="color:#3ed993">${estado.boteTotal.toFixed(0)}</p></div>
+            <div class="text-center"><span class="text-white/40 text-xs">Línea</span><p class="font-bold" style="color:#2fd4e3">${points(estado.premioLinea)}</p></div>
+            <div class="text-center"><span class="text-white/40 text-xs">Bingo</span><p class="font-bold" style="color:#ffce4d">${points(estado.premioBingo)}</p></div>
+            <div class="text-center"><span class="text-white/40 text-xs">Bote</span><p class="font-bold" style="color:#3ed993">${points(estado.boteTotal)}</p></div>
         </div></div>`;
 }
 
@@ -168,10 +190,6 @@ function renderJugando() {
     const hist = history.slice(1, 6).map(n => `<div class="rounded-full flex items-center justify-center text-xs font-bold f-ball" style="width:34px;height:34px;font-family:'Space Grotesk',Inter,sans-serif">${n}</div>`).join('');
     const cardsHtml = cards.length ? cards.map(cardHtml).join('') : `<p class="text-white/40 text-center py-6">Sin cartones asignados</p>`;
 
-    const lineaReady = obj !== 'BINGO' && lineMissing === 0;
-    const bingoReady = bingoMissing === 0;
-    const lineaDisabled = obj === 'BINGO';
-
     return `<div class="flex-1 flex flex-col p-4 gap-4 overflow-y-auto pb-28">
         <header class="rounded-2xl p-4 flex items-center justify-between" style="background:#13141b;border:1px solid rgba(255,255,255,0.06)">
             <div><span class="text-white/40 text-xs">Sala</span><p class="font-bold">${salaCodigo}</p></div>
@@ -187,11 +205,68 @@ function renderJugando() {
         </div>
         ${faltaBar}
         <div class="flex flex-col gap-3">${cardsHtml}</div>
-    </div>
-    <div class="fixed bottom-0 left-0 right-0 px-4 pt-4 flex gap-3 max-w-lg mx-auto" style="background:linear-gradient(to top,#0a0b0f 60%,transparent);padding-bottom:max(1rem,env(safe-area-inset-bottom))">
-        <button onclick="reclamar('LINEA')" ${lineaDisabled ? 'disabled' : ''} class="f-btn f-btn-linea flex-1 rounded-2xl py-4 font-bold ${lineaReady ? 'f-pulse' : ''}">¡LÍNEA!</button>
-        <button onclick="reclamar('BINGO')" class="f-btn f-btn-bingo flex-1 rounded-2xl py-4 font-bold ${bingoReady ? 'f-pulse' : ''}">¡BINGO!</button>
     </div>`;
+}
+
+// Los botones de cantar viven fuera de #app: aquí solo se actualizan sus atributos.
+function updateActions() {
+    const bar = document.getElementById('actions');
+    bar.hidden = view !== 'jugando';
+    if (bar.hidden) { disarm(); return; }
+
+    const obj = (estado && estado.premioObjetivo) || 'LINEA';
+    if (armed === 'LINEA' && obj === 'BINGO') disarm();
+
+    bar.querySelectorAll('[data-claim]').forEach(btn => {
+        const tipo = btn.dataset.claim;
+        const ready = tipo === 'LINEA' ? obj !== 'BINGO' && bestLineMissing() === 0 : bestBingoMissing() === 0;
+        const isArmed = armed === tipo;
+        const name = tipo === 'LINEA' ? '¡LÍNEA!' : '¡BINGO!';
+        btn.disabled = tipo === 'LINEA' && obj === 'BINGO';
+        btn.classList.toggle('f-pulse', ready && !isArmed);
+        btn.classList.toggle('is-armed', isArmed);
+        btn.setAttribute('aria-label', isArmed ? `Confirmar ${name}` : name);
+        const label = isArmed ? 'Confirmar' : name;
+        if (btn.textContent !== label) btn.textContent = label;
+    });
+}
+
+// Primer toque: el botón pide confirmación durante 3 s. Segundo toque: canta.
+function arm(tipo) {
+    armed = tipo;
+    clearTimeout(armTimer);
+    armTimer = setTimeout(() => { armed = null; updateActions(); }, 3000);
+    vibrate(20);
+    updateActions();
+}
+function disarm() {
+    armed = null;
+    clearTimeout(armTimer);
+}
+document.getElementById('actions').addEventListener('click', e => {
+    const btn = e.target.closest('[data-claim]');
+    if (!btn || btn.disabled) return;
+    const tipo = btn.dataset.claim;
+    if (armed === tipo) {
+        disarm();
+        reclamar(tipo);
+    } else {
+        arm(tipo);
+    }
+});
+
+// ---------- avisos ----------
+let toastTimer = null;
+function showToast(msg) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('is-visible');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('is-visible'), 4500);
+}
+function updateConnection() {
+    const offline = !navigator.onLine || errorCount >= 2;
+    document.getElementById('net').classList.toggle('is-visible', offline && !stopped);
 }
 
 function renderComprobando() {
@@ -224,6 +299,14 @@ function renderGanaste() {
     </div>`;
 }
 
+function renderCerrada() {
+    return `<div class="flex-1 flex flex-col items-center justify-center text-center p-8 gap-5">
+        <h1 class="text-2xl font-black">La sala se ha cerrado</h1>
+        <p class="text-white/60 max-w-xs">El anfitrión ha terminado la sesión de ${salaCodigo}. Para seguir jugando, únete a una sala nueva.</p>
+        <a href="/" class="mt-4 rounded-2xl px-8 py-3.5 font-bold text-white" style="background:linear-gradient(135deg,#8b5cf6,#ec4899 55%,#22d3ee)">Volver al inicio</a>
+    </div>`;
+}
+
 function renderFin() {
     const g = estado.ganador;
     const ganadorHtml = g ? `<div class="flex items-center gap-3 rounded-2xl px-5 py-3" style="background:#13141b;border:1px solid rgba(255,255,255,0.06)">
@@ -236,10 +319,12 @@ function renderFin() {
     </div>`;
 }
 
+let lastHtml = null;
 function render() {
     const app = document.getElementById('app');
     let html;
     switch (view) {
+        case 'cerrada': html = renderCerrada(); break;
         case 'jugando': html = renderJugando(); break;
         case 'comprobando': html = renderComprobando(); break;
         case 'aviso': html = renderAviso(); break;
@@ -247,7 +332,12 @@ function render() {
         case 'fin': html = renderFin(); break;
         default: html = renderEspera();
     }
-    app.innerHTML = html;
+    // Sin cambios no se toca el DOM: conserva el scroll, el foco y lo que lee el lector de pantalla.
+    if (html !== lastHtml) {
+        lastHtml = html;
+        app.innerHTML = html;
+    }
+    updateActions();
 }
 
 // ---------- confeti ----------
@@ -271,14 +361,22 @@ function launchConfetti() {
 
 // ---------- estado / vista ----------
 function deriveView() {
+    if (roomClosed) return 'cerrada';
     if (!estado) return 'espera';
     const g = estado.ganador;
     const rc = estado.reclamacionActiva;
 
     if (g && g.jugadorId === jugadorId) return 'ganaste';
     if (estado.estadoPartida === 'FINALIZADA') return 'fin';
-    if (rc && rc.jugadorId === jugadorId) return 'comprobando';
-    if (pendingClaim && !rc) return 'comprobando'; // optimista, aún no llegó al servidor
+    if (rc && rc.jugadorId === jugadorId) {
+        // El servidor ya tiene el canto: a partir de aquí manda su estado, y al
+        // rechazarlo o aprobarlo la vista vuelve a la partida.
+        pendingClaim = null;
+        return 'comprobando';
+    }
+    // Optimista mientras el canto no aparece en el servidor; si el anfitrión lo resolvió
+    // antes de que lo viéramos, a los 10 s se vuelve a la partida.
+    if (pendingClaim && !rc && Date.now() - pendingClaimAt < 10000) return 'comprobando';
     if (rc) return 'aviso';
     if (estado.estadoPartida === 'EN_JUEGO') { pendingClaim = null; return 'jugando'; }
     return 'espera';
@@ -288,32 +386,45 @@ async function reclamar(tipo) {
     if (!partidaId || cards.length === 0 || pendingClaim) return;
     const card = pickClaimCard(tipo);
     pendingClaim = tipo;
+    pendingClaimAt = Date.now();
     vibrate(40);
     view = 'comprobando';
     render();
+    let error = null;
     try {
         const res = await fetch('/api/reclamaciones', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ partidaId, jugadorId, cartonId: card.cartonId, tipo })
+            body: JSON.stringify({ partidaId, jugadorId, cartonId: card.cartonId, tipo }),
+            signal: timeoutSignal(FETCH_TIMEOUT)
         });
-        const data = await res.json();
-        if (!data.exito) {
-            pendingClaim = null;
-            view = deriveView();
-            render();
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.exito) {
+            error = data.error || 'No se ha podido cantar. Inténtalo otra vez.';
         }
     } catch (e) {
+        error = 'Sin conexión: tu canto no ha llegado. Inténtalo otra vez.';
+    }
+    if (error) {
         pendingClaim = null;
         view = deriveView();
         render();
+        showToast(error);
     }
+}
+
+function timeoutSignal(ms) {
+    if (AbortSignal.timeout) return AbortSignal.timeout(ms);
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), ms);
+    return controller.signal;
 }
 
 async function loadCards() {
     if (!partidaId) return;
     try {
-        const res = await fetch(`/api/jugadores/${jugadorId}/cartones?partidaId=${partidaId}`);
+        const res = await fetch(`/api/jugadores/${jugadorId}/cartones?partidaId=${partidaId}`, { signal: timeoutSignal(FETCH_TIMEOUT) });
+        if (!res.ok) return;
         const data = await res.json();
         if (data.exito && data.cartones) {
             cards = data.cartones;
@@ -325,10 +436,13 @@ async function loadCards() {
 async function refreshState() {
     try {
         const lobbyHeaders = lobbyEtag ? { 'If-None-Match': lobbyEtag } : {};
-        const lobbyRes = await fetch(`/api/salas/${salaCodigo}/lobby`, { headers: lobbyHeaders });
+        const lobbyRes = await fetch(`/api/salas/${salaCodigo}/lobby`, { headers: lobbyHeaders, signal: timeoutSignal(FETCH_TIMEOUT) });
 
         if (lobbyRes.status === 429) { pollInterval = Math.min(pollInterval * 2, 10000); return; }
-        if (lobbyRes.status !== 304) {
+        if (lobbyRes.status === 404) {
+            roomClosed = true;
+        } else if (lobbyRes.status !== 304) {
+            if (!lobbyRes.ok) throw new Error(`lobby ${lobbyRes.status}`);
             lobbyEtag = lobbyRes.headers.get('ETag');
             const lobbyData = await lobbyRes.json();
             if (lobbyData.exito) {
@@ -337,11 +451,15 @@ async function refreshState() {
             }
         }
 
-        if (partidaId) {
+        if (roomClosed) {
+            estado = null;
+        } else if (partidaId) {
             if (cards.length === 0) await loadCards();
             const estadoHeaders = estadoEtag ? { 'If-None-Match': estadoEtag } : {};
-            const partidaRes = await fetch(`/api/partidas/${partidaId}/estado`, { headers: estadoHeaders });
+            const partidaRes = await fetch(`/api/partidas/${partidaId}/estado`, { headers: estadoHeaders, signal: timeoutSignal(FETCH_TIMEOUT) });
+            if (partidaRes.status === 429) { pollInterval = Math.min(pollInterval * 2, 10000); return; }
             if (partidaRes.status !== 304) {
+                if (!partidaRes.ok) throw new Error(`estado ${partidaRes.status}`);
                 estadoEtag = partidaRes.headers.get('ETag');
                 const data = await partidaRes.json();
                 if (data.exito) {
@@ -360,25 +478,43 @@ async function refreshState() {
             estado = null;
         }
 
-        const next = deriveView();
-        view = next;
+        view = deriveView();
         if (view === 'jugando') requestWake(); else releaseWake();
+        // La partida o la sala ya terminaron: no hay nada más que sondear.
+        if (['ganaste', 'fin', 'cerrada'].includes(view)) stopped = true;
         render();
 
         errorCount = 0;
-        pollInterval = 1500;
+        pollInterval = POLL_BASE;
     } catch (e) {
         errorCount++;
-        pollInterval = Math.min(1500 * Math.pow(1.5, errorCount), 10000);
+        pollInterval = Math.min(POLL_BASE * Math.pow(1.5, errorCount), 10000);
     }
+    updateConnection();
 }
 
-function schedulePoll() {
-    setTimeout(() => { refreshState().finally(schedulePoll); }, pollInterval);
+// Un solo ciclo de sondeo a la vez; en pausa con la pestaña oculta.
+async function poll() {
+    clearTimeout(pollTimer);
+    if (polling || stopped) return;
+    polling = true;
+    await refreshState();
+    polling = false;
+    if (!stopped && !document.hidden) pollTimer = setTimeout(poll, pollInterval);
 }
+
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        clearTimeout(pollTimer);
+        return;
+    }
+    poll();
+    if (view === 'jugando') requestWake();
+});
+window.addEventListener('online', poll);
+window.addEventListener('offline', updateConnection);
 
 render();
-refreshState();
-schedulePoll();
+poll();
 </script>
 {% endblock %}

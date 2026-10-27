@@ -8,6 +8,24 @@ Las entradas están escritas para el cliente: en lenguaje natural y sin detalles
 
 ---
 
+## [v1.02.00] - 2026-10-27
+
+### Añadido
+
+- Si el anfitrión recarga la página o se le cierra el navegador, vuelve a su sala. Si ya había empezado la partida, la recupera en pausa con todas las bolas cantadas, y sigue al pulsar "Continuar".
+- Para cantar ¡LÍNEA! o ¡BINGO! hay que tocar dos veces. El primer toque pide confirmación durante 3 segundos, así un toque sin querer ya no detiene la partida.
+- El jugador ve un aviso cuando pierde la conexión y otro cuando su canto no llega al anfitrión.
+- Cuando el anfitrión cierra la sala, los jugadores ven que se ha cerrado en lugar de quedarse esperando.
+- La pantalla del anfitrión ya no se apaga mientras canta bolas.
+
+### Corregido
+
+- Los botones de cantar ya no se pierden un toque cuando llega una bola nueva justo al pulsarlos.
+- Un jugador cuyo canto se rechazaba se quedaba para siempre en "El anfitrión está revisando tu cartón". Ahora vuelve a la partida.
+- El sorteo clásico ya no se queda parado en algunos móviles cuando la voz no termina de hablar.
+- Un fallo puntual del servidor ya no congela la pantalla del jugador. Con la pestaña oculta, el móvil deja de consultar la partida y ahorra batería.
+- Salir de la sala de espera o de una partida devuelve la sala para el siguiente anfitrión.
+
 ## [v1.01.10] - 2026-10-26
 
 ### Corregido

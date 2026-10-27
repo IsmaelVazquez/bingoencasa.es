@@ -529,20 +529,69 @@ const shuffleArray = (array) => {
 // Generate initial shuffled pool of 1-90
 const generateShuffledPool = () => shuffleArray(Array.from({ length: 90 }, (_, i) => i + 1));
 
+// Sala del anfitrión de Modo Fiesta, para recuperarla si recarga la página.
+const FIESTA_HOST_KEY = 'bingoEncasa_fiestaHost';
+const loadFiestaHost = () => {
+    try {
+        const saved = JSON.parse(localStorage.getItem(FIESTA_HOST_KEY));
+        return saved?.roomCode ? saved : null;
+    } catch (e) {
+        return null;
+    }
+};
+const saveFiestaHost = (value) => {
+    try {
+        if (value) localStorage.setItem(FIESTA_HOST_KEY, JSON.stringify(value));
+        else localStorage.removeItem(FIESTA_HOST_KEY);
+    } catch (e) { /* almacenamiento no disponible */ }
+};
+
+// Mantiene la pantalla encendida mientras `active`; el navegador suelta el bloqueo
+// al ocultar la pestaña, así que se vuelve a pedir al regresar.
+const useWakeLock = (active) => {
+    useEffect(() => {
+        if (!active || !('wakeLock' in navigator)) return;
+        let lock = null;
+        let cancelled = false;
+
+        const acquire = async () => {
+            if (lock || document.visibilityState !== 'visible') return;
+            try {
+                const next = await navigator.wakeLock.request('screen');
+                if (cancelled) { next.release(); return; }
+                lock = next;
+                lock.addEventListener('release', () => { lock = null; });
+            } catch (e) { /* no soportado o sin permiso */ }
+        };
+
+        acquire();
+        document.addEventListener('visibilitychange', acquire);
+        return () => {
+            cancelled = true;
+            document.removeEventListener('visibilitychange', acquire);
+            lock?.release().catch(() => {});
+        };
+    }, [active]);
+};
+
 // --- MAIN APP ---
 const App = () => {
-    const [appMode, setAppMode] = useState('LANDING'); // LANDING, SOLO, HOST_LOBBY, HOST_GAME
-    const [roomCode, setRoomCode] = useState('');
-    const [roomName, setRoomName] = useState('');
-    const [roomPin, setRoomPin] = useState('');
+    // Sala de Modo Fiesta que quedó abierta antes de recargar (se valida contra el servidor al montar).
+    const [savedFiesta] = useState(loadFiestaHost);
+    const restoringGame = !!savedFiesta?.partidaId;
+
+    const [appMode, setAppMode] = useState(savedFiesta ? (restoringGame ? 'SOLO' : 'HOST_LOBBY') : 'LANDING'); // LANDING, SOLO, HOST_LOBBY, HOST_GAME
+    const [roomCode, setRoomCode] = useState(restoringGame ? '' : savedFiesta?.roomCode || '');
+    const [roomName, setRoomName] = useState(restoringGame ? '' : savedFiesta?.roomName || '');
+    const [roomPin, setRoomPin] = useState(restoringGame ? '' : savedFiesta?.roomPin || '');
     const [players, setPlayers] = useState([]);
     const [qrReady, setQrReady] = useState(false);
     const [urlCopied, setUrlCopied] = useState(false);
     const [isCreatingRoom, setIsCreatingRoom] = useState(false);
-    const [partidaId, setPartidaId] = useState(null);
+    const [partidaId, setPartidaId] = useState(savedFiesta?.partidaId || null);
     const [isStartingGame, setIsStartingGame] = useState(false);
     const [fiestaPlayers, setFiestaPlayers] = useState([]);
-    const [isFiestaMode, setIsFiestaMode] = useState(false);
+    const [isFiestaMode, setIsFiestaMode] = useState(restoringGame);
     const qrRef = useRef(null);
     const qrCodeInstance = useRef(null);
 
@@ -565,7 +614,8 @@ const App = () => {
         return null;
     };
 
-    const savedState = loadSavedState();
+    // Al recuperar una partida de Modo Fiesta, las bolas llegan del servidor, no de la partida local.
+    const savedState = restoringGame ? null : loadSavedState();
 
     // Game State - Two arrays: available (to draw from) and drawn (already called)
     const [numbers] = useState(Array.from({ length: 90 }, (_, i) => i + 1));
@@ -697,7 +747,7 @@ const App = () => {
         setHistory([]);
         setHasSavedGame(false);
         setGameStatus('STOPPED');
-        if (timerRef.current) clearInterval(timerRef.current);
+        if (timerRef.current) clearTimeout(timerRef.current);
     };
 
     const speakText = (text) => {
@@ -718,6 +768,18 @@ const App = () => {
         
         isSpeakingRef.current = true;
         synth.cancel();
+
+        // En Android e iOS speechSynthesis a veces no dispara onend ni onerror:
+        // sin este tope, el sorteo se quedaría esperando para siempre.
+        let finished = false;
+        const finish = () => {
+            if (finished) return;
+            finished = true;
+            clearTimeout(safety);
+            isSpeakingRef.current = false;
+            if (onComplete) onComplete();
+        };
+        const safety = setTimeout(finish, 6000);
         
         const utterance = new SpeechSynthesisUtterance(num.toString());
         utterance.lang = 'es-ES';
@@ -730,27 +792,15 @@ const App = () => {
                 nick.lang = 'es-ES';
                 nick.pitch = 1.1;
                 if (selectedVoice) nick.voice = selectedVoice;
-                nick.onend = () => {
-                    isSpeakingRef.current = false;
-                    if (onComplete) onComplete();
-                };
-                nick.onerror = () => {
-                    isSpeakingRef.current = false;
-                    if (onComplete) onComplete();
-                };
+                nick.onend = finish;
+                nick.onerror = finish;
                 synth.speak(nick);
             };
         } else {
-            utterance.onend = () => {
-                isSpeakingRef.current = false;
-                if (onComplete) onComplete();
-            };
+            utterance.onend = finish;
         }
         
-        utterance.onerror = () => {
-            isSpeakingRef.current = false;
-            if (onComplete) onComplete();
-        };
+        utterance.onerror = finish;
         
         synth.speak(utterance);
     };
@@ -870,6 +920,14 @@ const App = () => {
 
     const resetGame = () => {
         if(confirm("¿Seguro que quieres salir y volver al inicio?")) {
+            if (isFiestaMode && partidaId) {
+                // Cierra la partida y devuelve la sala; si falla, la tarea de salas inactivas la recoge.
+                fetch(`/api/partidas/${partidaId}/finalizar`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ liberarSala: true }),
+                }).catch(() => {});
+            }
             stopGame();
             setAvailableNumbers(generateShuffledPool());
             setDrawnNumbers([]);
@@ -989,6 +1047,7 @@ const App = () => {
                     setRoomCode(data.salaCodigo);
                     setRoomName(data.nombreSala);
                     setRoomPin(data.salaPin || '');
+                    saveFiestaHost({ roomCode: data.salaCodigo, roomName: data.nombreSala, roomPin: data.salaPin || '', partidaId: null });
                 }
                 setIsCreatingRoom(false);
             })
@@ -1214,6 +1273,56 @@ const App = () => {
         setAppMode('LANDING');
     };
 
+    // Volver al inicio cierra la sesión de Modo Fiesta guardada.
+    useEffect(() => {
+        if (appMode === 'LANDING') saveFiestaHost(null);
+    }, [appMode]);
+
+    // Tras recargar: comprueba que la sala sigue siendo nuestra y recupera la partida en pausa.
+    useEffect(() => {
+        if (!savedFiesta) return;
+        let cancelled = false;
+
+        const abandon = () => {
+            saveFiestaHost(null);
+            setIsFiestaMode(false);
+            setPartidaId(null);
+            setAppMode('LANDING');
+        };
+
+        (async () => {
+            try {
+                const lobbyRes = await fetch(`/api/salas/${savedFiesta.roomCode}/lobby`);
+                if (cancelled) return;
+                if (lobbyRes.status === 404) { abandon(); return; }
+                if (!restoringGame || !lobbyRes.ok) return;
+
+                const lobby = await lobbyRes.json();
+                setFiestaPlayers((lobby.jugadores || []).map(j => j.apodo));
+
+                const res = await fetch(`/api/partidas/${savedFiesta.partidaId}/estado`);
+                if (cancelled) return;
+                if (res.status === 404) { abandon(); return; }
+                const data = await res.json();
+                if (cancelled || !data.exito) return;
+                // Finalizada sin ganador: el anfitrión ya la había cerrado.
+                if (data.estadoPartida === 'FINALIZADA' && !data.ganador) { abandon(); return; }
+
+                setDrawnNumbers(data.bolasSacadas || []);
+                setHistory(data.historial || []);
+                setCurrentNumber(data.bolaActual || null);
+                setTargetPrize(data.premioObjetivo === 'LINEA' ? 'LÍNEA' : 'BINGO');
+                setGameStatus('PAUSED');
+            } catch (e) {
+                // Sin red: se queda en pantalla y el sondeo del estado se pondrá al día al volver la conexión.
+            }
+        })();
+
+        return () => { cancelled = true; };
+    }, []);
+
+    useWakeLock(appMode === 'SOLO' && gameStatus !== 'STOPPED');
+
     // Reset room state when leaving lobby
     useEffect(() => {
         if (appMode !== 'HOST_LOBBY') {
@@ -1262,6 +1371,14 @@ const App = () => {
         });
     };
 
+    // Salir de la sala de espera la devuelve al pool para el siguiente anfitrión.
+    const leaveLobby = () => {
+        if (roomCode) {
+            fetch(`/api/salas/${roomCode}/liberar`, { method: 'POST' }).catch(() => {});
+        }
+        setAppMode('LANDING');
+    };
+
     const startFiestaGame = async () => {
         if (isStartingGame) return;
         setIsStartingGame(true);
@@ -1288,6 +1405,7 @@ const App = () => {
 
             const gameId = createData.partidaId;
             setPartidaId(gameId);
+            saveFiestaHost({ roomCode, roomName, roomPin, partidaId: gameId });
 
             // 2. Start the game
             const startRes = await fetch(`/api/partidas/${gameId}/comenzar`, {
@@ -1336,7 +1454,7 @@ const App = () => {
                 <BetaBadge />
 
                 <div className="glass-panel p-6 md:p-12 rounded-3xl w-full max-w-5xl text-center relative animate-enter">
-                    <button onClick={() => setAppMode('LANDING')} className="absolute top-4 left-4 md:top-6 md:left-6 text-white/50 hover:text-white flex items-center gap-2">
+                    <button onClick={leaveLobby} className="absolute top-4 left-4 md:top-6 md:left-6 text-white/50 hover:text-white flex items-center gap-2">
                         <Icons.RotateCcw className="w-4 h-4" /> Volver
                     </button>
 
