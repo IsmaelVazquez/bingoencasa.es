@@ -27,3 +27,8 @@
 /.idea/
 /.vscode/
 ###< local tooling ###
+
+###> phpunit/phpunit ###
+/phpunit.xml
+/.phpunit.cache/
+###< phpunit/phpunit ###

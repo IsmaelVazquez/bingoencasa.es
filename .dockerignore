@@ -11,3 +11,5 @@ public/bundles
 .env
 .env.local
 .env.*.local
+tests
+.phpunit.cache

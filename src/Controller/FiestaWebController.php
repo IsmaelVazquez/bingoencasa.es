@@ -7,6 +7,7 @@ use App\Repository\GameRepository;
 use App\Repository\PlayerRepository;
 use App\Repository\RoomRepository;
 use App\Service\FiestaAccess;
+use Doctrine\DBAL\LockMode;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
@@ -58,32 +59,48 @@ class FiestaWebController extends AbstractController
                     $limiter->consume();
                     $error = 'Código de sala o PIN incorrectos.';
                 } else {
-                    $existingPlayer = $this->playerRepository->findOneBy([
-                        'room' => $room,
-                        'nickname' => $apodo,
-                    ]);
-
-                    if ($existingPlayer && !$this->access->isPlayer($existingPlayer)) {
-                        // El apodo es de otro dispositivo: no se le puede suplantar.
-                        $error = 'Ese apodo ya está en uso en esta sala. Elige otro.';
-                    } elseif (!$existingPlayer && $room->isFull()) {
-                        $error = 'La sala está llena (máximo ' . $room->getMaxPlayers() . ' jugadores).';
-                    } else {
-                        $player = $existingPlayer;
-                        if (!$player) {
-                            $player = new Player();
-                            $player->setNickname($apodo);
-                            $player->setRoom($room);
-
-                            $this->em->persist($player);
-                            $this->em->flush();
+                    // Con la sala bloqueada, dos invitados a la vez no pueden coger
+                    // el mismo apodo ni pasarse del aforo.
+                    $resultado = $this->em->wrapInTransaction(function () use ($room, $apodo, $pin): Player|string {
+                        $this->em->refresh($room, LockMode::PESSIMISTIC_WRITE);
+                        if ($room->isAvailable() || !hash_equals((string) $room->getPin(), $pin)) {
+                            // La sala se ha liberado mientras tanto.
+                            return 'Código de sala o PIN incorrectos.';
                         }
 
-                        $this->access->grantPlayer($player);
+                        $existingPlayer = $this->playerRepository->findOneBy([
+                            'room' => $room,
+                            'nickname' => $apodo,
+                        ]);
+
+                        if ($existingPlayer && !$this->access->isPlayer($existingPlayer)) {
+                            // El apodo es de otro dispositivo: no se le puede suplantar.
+                            return 'Ese apodo ya está en uso en esta sala. Elige otro.';
+                        }
+                        if ($existingPlayer) {
+                            return $existingPlayer;
+                        }
+                        if ($room->isFull()) {
+                            return 'La sala está llena (máximo ' . $room->getMaxPlayers() . ' jugadores).';
+                        }
+
+                        $player = new Player();
+                        $player->setNickname($apodo);
+                        $room->addPlayer($player);
+                        $room->touch();
+                        $this->em->persist($player);
+
+                        return $player;
+                    });
+
+                    if (is_string($resultado)) {
+                        $error = $resultado;
+                    } else {
+                        $this->access->grantPlayer($resultado);
 
                         return $this->redirectToRoute('fiesta_jugar', [
                             'codigo' => $room->getCode(),
-                            'jugadorId' => $player->getId()->toBase32(),
+                            'jugadorId' => $resultado->getId()->toBase32(),
                         ]);
                     }
                 }

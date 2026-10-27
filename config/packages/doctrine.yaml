@@ -2,6 +2,8 @@ doctrine:
     dbal:
         url: '%env(resolve:DATABASE_URL)%'
         server_version: '18'
+        # La tabla de sesiones la gestiona PdoSessionHandler, no el ORM.
+        schema_filter: ~^(?!sessions$)~
         profiling_collect_backtrace: '%kernel.debug%'
     orm:
         validate_xml_mapping: true

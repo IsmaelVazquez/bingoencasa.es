@@ -23,6 +23,7 @@ use App\Service\BingoCardGenerator;
 use App\Service\FiestaAccess;
 use App\Service\RoomCodeGenerator;
 use App\Service\RoomReleaser;
+use Doctrine\DBAL\LockMode;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -190,54 +191,55 @@ class FiestaController extends AbstractController
         $porcentajeLinea = max(0, min(100, (int) ($data['porcentajeLinea'] ?? 30)));
         $porcentajeBingo = max(0, min(100 - $porcentajeLinea, (int) ($data['porcentajeBingo'] ?? 70)));
 
-        $playersCount = $room->getPlayers()->count();
-        $totalCartonesNecesarios = $playersCount * $cartonesPorJugador;
+        try {
+            [$game, $totalCartones] = $this->em->wrapInTransaction(
+                function () use ($room, $seed, $cartonesPorJugador, $premioObjetivo, $precioCarton, $porcentajeLinea, $porcentajeBingo): array {
+                    // Con la sala bloqueada nadie entra mientras se reparten los cartones.
+                    $this->em->refresh($room, LockMode::PESSIMISTIC_WRITE);
 
-        $availableCards = $this->cardTemplateRepository->countAvailable();
-        if ($availableCards < $totalCartonesNecesarios) {
+                    $totalCartonesNecesarios = $room->getPlayers()->count() * $cartonesPorJugador;
+                    $cardTemplates = $this->cardTemplateRepository->getAvailableCards($totalCartonesNecesarios);
+                    if (count($cardTemplates) < $totalCartonesNecesarios) {
+                        // Se deshace la transacción y los cartones cogidos vuelven al pool.
+                        throw new \OverflowException((string) $totalCartonesNecesarios);
+                    }
+
+                    $game = new Game();
+                    $game->setRoom($room);
+                    $game->setSeed($seed);
+                    $game->setStatus(GameStatus::DETENIDA);
+                    $game->setPrizeTarget($premioObjetivo);
+                    $game->setCardPrice($precioCarton);
+                    $game->setLineaPrizePercent($porcentajeLinea);
+                    $game->setBingoPrizePercent($porcentajeBingo);
+                    $this->em->persist($game);
+
+                    $templateIndex = 0;
+                    foreach ($room->getPlayers() as $player) {
+                        for ($i = 0; $i < $cartonesPorJugador; $i++) {
+                            $template = $cardTemplates[$templateIndex++];
+
+                            $card = new Card();
+                            $card->setPlayer($player);
+                            $card->setGame($game);
+                            $card->setSeed($template->getId());
+                            $card->setGrid($template->getGrid());
+                            $card->setFlatNumbers($template->getFlatNumbers());
+                            $this->em->persist($card);
+                        }
+                    }
+
+                    $room->touch();
+
+                    return [$game, $templateIndex];
+                }
+            );
+        } catch (\OverflowException $e) {
             return $this->json([
                 'exito' => false,
-                'error' => 'No hay suficientes cartones disponibles. Disponibles: ' . $availableCards . ', Necesarios: ' . $totalCartonesNecesarios,
+                'error' => 'No hay suficientes cartones disponibles. Disponibles: ' . $this->cardTemplateRepository->countAvailable() . ', Necesarios: ' . $e->getMessage(),
             ], 503);
         }
-
-        $game = new Game();
-        $game->setRoom($room);
-        $game->setSeed($seed);
-        $game->setStatus(GameStatus::DETENIDA);
-        $game->setPrizeTarget($premioObjetivo);
-        $game->setCardPrice($precioCarton);
-        $game->setLineaPrizePercent($porcentajeLinea);
-        $game->setBingoPrizePercent($porcentajeBingo);
-
-        $this->em->persist($game);
-
-        $cardTemplates = $this->cardTemplateRepository->getAvailableCards($totalCartonesNecesarios);
-
-        $templateIndex = 0;
-        $totalCartones = 0;
-        foreach ($room->getPlayers() as $player) {
-            for ($i = 0; $i < $cartonesPorJugador; $i++) {
-                if ($templateIndex >= count($cardTemplates)) {
-                    break;
-                }
-
-                $template = $cardTemplates[$templateIndex];
-                
-                $card = new Card();
-                $card->setPlayer($player);
-                $card->setGame($game);
-                $card->setSeed($template->getId());
-                $card->setGrid($template->getGrid());
-                $card->setFlatNumbers($template->getFlatNumbers());
-
-                $this->em->persist($card);
-                $templateIndex++;
-                $totalCartones++;
-            }
-        }
-
-        $this->em->flush();
 
         $boteTotal = $totalCartones * $precioCarton;
         $premioLinea = $boteTotal * ($porcentajeLinea / 100);
@@ -267,15 +269,22 @@ class FiestaController extends AbstractController
             return $this->forbidden();
         }
 
-        $game->setStatus(GameStatus::EN_JUEGO);
-        $game->setStartedAt(new \DateTimeImmutable());
-        $this->em->flush();
+        return $this->em->wrapInTransaction(function () use ($game): JsonResponse {
+            $this->lockGame($game);
+            if ($game->getStatusEnum() !== GameStatus::DETENIDA) {
+                return $this->invalidState($game);
+            }
 
-        return $this->json([
-            'exito' => true,
-            'estadoPartida' => $game->getStatus(),
-            'mensaje' => '¡La partida ha comenzado!',
-        ]);
+            $game->setStatus(GameStatus::EN_JUEGO);
+            $game->setStartedAt(new \DateTimeImmutable());
+            $game->getRoom()->touch();
+
+            return $this->json([
+                'exito' => true,
+                'estadoPartida' => $game->getStatus(),
+                'mensaje' => '¡La partida ha comenzado!',
+            ]);
+        });
     }
 
     #[Route('/partidas/{partidaId}/pausar', name: 'pausar_partida', methods: ['POST'])]
@@ -289,14 +298,20 @@ class FiestaController extends AbstractController
             return $this->forbidden();
         }
 
-        $game->setStatus(GameStatus::PAUSADA);
-        $this->em->flush();
+        return $this->em->wrapInTransaction(function () use ($game): JsonResponse {
+            $this->lockGame($game);
+            if (!$game->canTransitionTo(GameStatus::PAUSADA)) {
+                return $this->invalidState($game);
+            }
 
-        return $this->json([
-            'exito' => true,
-            'estadoPartida' => $game->getStatus(),
-            'mensaje' => 'Partida pausada',
-        ]);
+            $game->setStatus(GameStatus::PAUSADA);
+
+            return $this->json([
+                'exito' => true,
+                'estadoPartida' => $game->getStatus(),
+                'mensaje' => 'Partida pausada',
+            ]);
+        });
     }
 
     #[Route('/partidas/{partidaId}/reanudar', name: 'reanudar_partida', methods: ['POST'])]
@@ -310,14 +325,27 @@ class FiestaController extends AbstractController
             return $this->forbidden();
         }
 
-        $game->setStatus(GameStatus::EN_JUEGO);
-        $this->em->flush();
+        return $this->em->wrapInTransaction(function () use ($game): JsonResponse {
+            $this->lockGame($game);
+            if ($game->getStatusEnum() !== GameStatus::PAUSADA) {
+                return $this->invalidState($game);
+            }
+            if ($game->hasPendingClaim()) {
+                return $this->json([
+                    'exito' => false,
+                    'error' => 'Hay una reclamación sin resolver. Apruébala o recházala antes de seguir.',
+                ], 409);
+            }
 
-        return $this->json([
-            'exito' => true,
-            'estadoPartida' => $game->getStatus(),
-            'mensaje' => '¡Partida reanudada!',
-        ]);
+            $game->setStatus(GameStatus::EN_JUEGO);
+            $game->getRoom()->touch();
+
+            return $this->json([
+                'exito' => true,
+                'estadoPartida' => $game->getStatus(),
+                'mensaje' => '¡Partida reanudada!',
+            ]);
+        });
     }
 
     #[Route('/partidas/{partidaId}/finalizar', name: 'finalizar_partida', methods: ['POST'])]
@@ -334,17 +362,20 @@ class FiestaController extends AbstractController
         $data = $this->jsonBody($request);
         $liberarSala = ($data['liberarSala'] ?? false) === true;
 
-        $cartonesLiberados = $this->finalizeGame($game);
+        [$cartonesLiberados, $salaLiberada] = $this->em->wrapInTransaction(function () use ($game, $liberarSala): array {
+            $this->lockGame($game);
+            $cartonesLiberados = $this->finalizeGame($game);
 
-        $room = $game->getRoom();
-        $salaLiberada = false;
+            $room = $game->getRoom();
+            if ($liberarSala && $room) {
+                $this->em->refresh($room, LockMode::PESSIMISTIC_WRITE);
+                $this->roomReleaser->release($room);
 
-        if ($liberarSala && $room) {
-            $this->roomReleaser->release($room);
-            $salaLiberada = true;
-        }
+                return [$cartonesLiberados, true];
+            }
 
-        $this->em->flush();
+            return [$cartonesLiberados, false];
+        });
 
         return $this->json([
             'exito' => true,
@@ -366,8 +397,11 @@ class FiestaController extends AbstractController
             return $this->forbidden();
         }
 
-        $cartonesLiberados = $this->roomReleaser->release($room);
-        $this->em->flush();
+        $cartonesLiberados = $this->em->wrapInTransaction(function () use ($room): int {
+            $this->em->refresh($room, LockMode::PESSIMISTIC_WRITE);
+
+            return $this->roomReleaser->release($room);
+        });
 
         return $this->json([
             'exito' => true,
@@ -388,38 +422,45 @@ class FiestaController extends AbstractController
             return $this->forbidden();
         }
 
-        if ($game->getStatus() !== GameStatus::EN_JUEGO->value) {
-            return $this->json([
-                'exito' => false,
-                'error' => 'La partida no está en juego',
-            ], 400);
+        // Con la partida bloqueada, un doble clic o dos pestañas del anfitrión
+        // no pueden sacar la misma bola dos veces.
+        $resultado = $this->em->wrapInTransaction(function () use ($game): JsonResponse|int {
+            $this->lockGame($game);
+
+            if ($game->getStatus() !== GameStatus::EN_JUEGO->value) {
+                return $this->json([
+                    'exito' => false,
+                    'error' => 'La partida no está en juego',
+                ], 400);
+            }
+
+            $bolasSacadas = array_map(fn(Draw $d) => $d->getNumber(), $game->getDraws()->toArray());
+
+            if (count($bolasSacadas) >= 90) {
+                return $this->json([
+                    'exito' => false,
+                    'error' => 'Ya se han sacado todas las bolas',
+                ], 400);
+            }
+
+            $disponibles = array_values(array_diff(range(1, 90), $bolasSacadas));
+            $nuevaBola = $disponibles[random_int(0, count($disponibles) - 1)];
+
+            $draw = new Draw();
+            $draw->setNumber($nuevaBola);
+            $game->addDraw($draw);
+            $this->em->persist($draw);
+            $game->getRoom()->touch();
+
+            return $nuevaBola;
+        });
+
+        if ($resultado instanceof JsonResponse) {
+            return $resultado;
         }
+        $nuevaBola = $resultado;
 
-        // Get already drawn numbers
-        $bolasSacadas = array_map(fn(Draw $d) => $d->getNumber(), $game->getDraws()->toArray());
-
-        if (count($bolasSacadas) >= 90) {
-            return $this->json([
-                'exito' => false,
-                'error' => 'Ya se han sacado todas las bolas',
-            ], 400);
-        }
-
-        // Generate new random number
-        $disponibles = array_diff(range(1, 90), $bolasSacadas);
-        $nuevaBola = $disponibles[array_rand($disponibles)];
-
-        $draw = new Draw();
-        $draw->setNumber($nuevaBola);
-        $game->addDraw($draw);
-
-        $this->em->persist($draw);
-        $this->em->flush();
-
-        // Get updated list including the new draw
-        $allDraws = $game->getDraws()->toArray();
-        usort($allDraws, fn($a, $b) => $b->getCreatedAt() <=> $a->getCreatedAt());
-        $bolasSacadasActualizadas = array_map(fn(Draw $d) => $d->getNumber(), $allDraws);
+        $bolasSacadasActualizadas = $this->drawnNumbersNewestFirst($game);
 
         return $this->json([
             'exito' => true,
@@ -439,9 +480,7 @@ class FiestaController extends AbstractController
             return $this->json(['exito' => false, 'error' => 'Partida no encontrada'], 404);
         }
 
-        $draws = $game->getDraws()->toArray();
-        usort($draws, fn($a, $b) => $b->getCreatedAt() <=> $a->getCreatedAt());
-        $bolasSacadas = array_map(fn(Draw $d) => $d->getNumber(), $draws);
+        $bolasSacadas = $this->drawnNumbersNewestFirst($game);
         $bolaActual = count($bolasSacadas) > 0 ? $bolasSacadas[0] : null;
         
         // Firma de reclamaciones para el ETag (nuevas pendientes / resueltas / ganador).
@@ -596,39 +635,54 @@ class FiestaController extends AbstractController
             || $card->getGame() !== $game) {
             return $this->forbidden();
         }
-        if ($game->getStatus() === GameStatus::FINALIZADA->value) {
-            return $this->json(['exito' => false, 'error' => 'La partida ya ha terminado'], 409);
-        }
+        // Con la partida bloqueada, dos reclamaciones simultáneas no pueden
+        // quedar las dos pendientes.
+        $claim = $this->em->wrapInTransaction(function () use ($game, $player, $card, $tipo): JsonResponse|Claim {
+            $this->lockGame($game);
 
-        // Solo se admite una reclamación en curso por partida.
-        foreach ($game->getClaims() as $existing) {
-            if ($existing->getStatus() === ClaimStatus::PENDIENTE->value) {
+            if ($game->getStatus() === GameStatus::FINALIZADA->value) {
+                return $this->json(['exito' => false, 'error' => 'La partida ya ha terminado'], 409);
+            }
+
+            // Solo se admite una reclamación en curso por partida.
+            if ($game->hasPendingClaim()) {
                 return $this->json([
                     'exito' => false,
                     'error' => 'Ya hay una reclamación en curso. Espera a que el anfitrión la resuelva.',
                 ], 409);
             }
+
+            if ($game->getStatus() !== GameStatus::EN_JUEGO->value) {
+                return $this->json(['exito' => false, 'error' => 'La partida no está en juego'], 409);
+            }
+
+            // Pista de validación para el anfitrión (la decisión final es humana).
+            $bolasSacadas = array_map(fn(Draw $d) => $d->getNumber(), $game->getDraws()->toArray());
+            $sugerenciaValida = $tipo === 'LINEA'
+                ? $this->cardGenerator->validateLinea($card->getGrid(), $bolasSacadas)
+                : $this->cardGenerator->validateBingo($card->getFlatNumbers(), $bolasSacadas);
+
+            $claim = new Claim();
+            $claim->setGame($game);
+            $claim->setPlayer($player);
+            $claim->setCard($card);
+            $claim->setType($tipo === 'LINEA' ? ClaimType::LINEA : ClaimType::BINGO);
+            $claim->setStatus(ClaimStatus::PENDIENTE);
+            $claim->setNote($sugerenciaValida ? 'sugerencia:valida' : 'sugerencia:invalida');
+            $game->addClaim($claim);
+
+            // La partida se pausa hasta que el anfitrión verifique la reclamación.
+            $game->setStatus(GameStatus::PAUSADA);
+            $game->getRoom()->touch();
+
+            $this->em->persist($claim);
+
+            return $claim;
+        });
+
+        if ($claim instanceof JsonResponse) {
+            return $claim;
         }
-
-        // Pista de validación para el anfitrión (la decisión final es humana).
-        $bolasSacadas = array_map(fn(Draw $d) => $d->getNumber(), $game->getDraws()->toArray());
-        $sugerenciaValida = $tipo === 'LINEA'
-            ? $this->cardGenerator->validateLinea($card->getGrid(), $bolasSacadas)
-            : $this->cardGenerator->validateBingo($card->getFlatNumbers(), $bolasSacadas);
-
-        $claim = new Claim();
-        $claim->setGame($game);
-        $claim->setPlayer($player);
-        $claim->setCard($card);
-        $claim->setType($tipo === 'LINEA' ? ClaimType::LINEA : ClaimType::BINGO);
-        $claim->setStatus(ClaimStatus::PENDIENTE);
-        $claim->setNote($sugerenciaValida ? 'sugerencia:valida' : 'sugerencia:invalida');
-
-        // La partida se pausa hasta que el anfitrión verifique la reclamación.
-        $game->setStatus(GameStatus::PAUSADA);
-
-        $this->em->persist($claim);
-        $this->em->flush();
 
         return $this->json([
             'exito' => true,
@@ -649,25 +703,31 @@ class FiestaController extends AbstractController
         if (!$this->access->isHost($claim->getGame()->getRoom())) {
             return $this->forbidden();
         }
-        if ($claim->getStatus() !== ClaimStatus::PENDIENTE->value) {
-            return $this->json(['exito' => false, 'error' => 'La reclamación ya fue resuelta'], 409);
-        }
-
         $game = $claim->getGame();
-        $claim->setStatus(ClaimStatus::APROBADA);
-
         $esBingo = $claim->getType() === ClaimType::BINGO->value;
 
-        if ($esBingo) {
-            // Bingo válido: la partida termina y se libera el cartonaje.
-            $this->finalizeGame($game);
-        } else {
-            // Línea válida: el objetivo pasa a BINGO y la partida se reanuda.
-            $game->setPrizeTarget('BINGO');
-            $game->setStatus(GameStatus::EN_JUEGO);
-        }
+        $error = $this->em->wrapInTransaction(function () use ($claim, $game, $esBingo): ?JsonResponse {
+            if ($error = $this->lockClaim($claim, $game)) {
+                return $error;
+            }
 
-        $this->em->flush();
+            $claim->setStatus(ClaimStatus::APROBADA);
+
+            if ($esBingo) {
+                // Bingo válido: la partida termina y se libera el cartonaje.
+                $this->finalizeGame($game);
+            } else {
+                // Línea válida: el objetivo pasa a BINGO y la partida se reanuda.
+                $game->setPrizeTarget('BINGO');
+                $this->resumeAfterClaim($game);
+            }
+            $game->getRoom()->touch();
+
+            return null;
+        });
+        if ($error) {
+            return $error;
+        }
 
         return $this->json([
             'exito' => true,
@@ -688,15 +748,23 @@ class FiestaController extends AbstractController
         if (!$this->access->isHost($claim->getGame()->getRoom())) {
             return $this->forbidden();
         }
-        if ($claim->getStatus() !== ClaimStatus::PENDIENTE->value) {
-            return $this->json(['exito' => false, 'error' => 'La reclamación ya fue resuelta'], 409);
-        }
-
         $game = $claim->getGame();
-        $claim->setStatus(ClaimStatus::RECHAZADA);
-        // Falsa alarma: la partida se reanuda.
-        $game->setStatus(GameStatus::EN_JUEGO);
-        $this->em->flush();
+
+        $error = $this->em->wrapInTransaction(function () use ($claim, $game): ?JsonResponse {
+            if ($error = $this->lockClaim($claim, $game)) {
+                return $error;
+            }
+
+            $claim->setStatus(ClaimStatus::RECHAZADA);
+            // Falsa alarma: la partida se reanuda.
+            $this->resumeAfterClaim($game);
+            $game->getRoom()->touch();
+
+            return null;
+        });
+        if ($error) {
+            return $error;
+        }
 
         return $this->json([
             'exito' => true,
@@ -708,6 +776,65 @@ class FiestaController extends AbstractController
     }
 
     // ==================== HELPERS ====================
+
+    /**
+     * Bloquea la fila de la partida hasta el final de la transacción y la
+     * recarga. Todas las acciones que cambian una partida pasan por aquí, así
+     * que se ejecutan de una en una y cada una ve lo que hizo la anterior.
+     * Hay que llamarla antes de leer las bolas o las reclamaciones.
+     */
+    private function lockGame(Game $game): void
+    {
+        $this->em->refresh($game, LockMode::PESSIMISTIC_WRITE);
+    }
+
+    /** Bloquea la partida y comprueba que la reclamación sigue pendiente. */
+    private function lockClaim(Claim $claim, Game $game): ?JsonResponse
+    {
+        $this->lockGame($game);
+        $this->em->refresh($claim);
+
+        if ($claim->getStatus() !== ClaimStatus::PENDIENTE->value) {
+            return $this->json(['exito' => false, 'error' => 'La reclamación ya fue resuelta'], 409);
+        }
+        if ($game->getStatus() === GameStatus::FINALIZADA->value) {
+            return $this->json(['exito' => false, 'error' => 'La partida ya ha terminado'], 409);
+        }
+
+        return null;
+    }
+
+    /** Tras resolver una reclamación, la partida vuelve a estar en juego si estaba pausada por ella. */
+    private function resumeAfterClaim(Game $game): void
+    {
+        if ($game->getStatusEnum() === GameStatus::PAUSADA) {
+            $game->setStatus(GameStatus::EN_JUEGO);
+        }
+    }
+
+    private function invalidState(Game $game): JsonResponse
+    {
+        return $this->json([
+            'exito' => false,
+            'error' => 'No se puede hacer eso con la partida en estado ' . mb_strtolower($game->getStatusEnum()->label()) . '.',
+            'estadoPartida' => $game->getStatus(),
+        ], 409);
+    }
+
+    /**
+     * Bolas de la partida, de la más reciente a la más antigua. Se ordena por
+     * el ULID, que guarda el instante con milisegundos: created_at solo llega
+     * al segundo y dos bolas del mismo segundo podían salir desordenadas.
+     *
+     * @return int[]
+     */
+    private function drawnNumbersNewestFirst(Game $game): array
+    {
+        $draws = $game->getDraws()->toArray();
+        usort($draws, fn(Draw $a, Draw $b) => strcmp((string) $b->getId(), (string) $a->getId()));
+
+        return array_map(fn(Draw $d) => $d->getNumber(), $draws);
+    }
 
     private function findGameById(string $id): ?Game
     {
@@ -740,11 +867,18 @@ class FiestaController extends AbstractController
     /**
      * Finaliza la partida: marca FINALIZADA, fecha de fin y libera el cartonaje.
      * No toca la sala ni los jugadores (eso se hace al liberar la sala).
+     * La partida tiene que estar bloqueada con lockGame().
      *
      * @return int número de cartones liberados
      */
     private function finalizeGame(Game $game): int
     {
+        // Una partida ya finalizada devolvió sus cartones, que quizá use ya
+        // otra sala: no se vuelven a liberar.
+        if ($game->getStatus() === GameStatus::FINALIZADA->value) {
+            return 0;
+        }
+
         $game->setStatus(GameStatus::FINALIZADA);
         $game->setFinishedAt(new \DateTimeImmutable());
 

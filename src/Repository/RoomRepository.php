@@ -17,25 +17,59 @@ class RoomRepository extends ServiceEntityRepository
     }
 
     /**
-     * Get an available room and mark it as used
+     * Get an available room and mark it as used.
+     *
+     * The pick and the flag change go in a single statement with
+     * FOR UPDATE SKIP LOCKED, so two hosts creating a room at the same time
+     * never get the same one.
      */
     public function acquireAvailableRoom(): ?Room
     {
         $conn = $this->getEntityManager()->getConnection();
-        $sql = 'SELECT id FROM room WHERE is_available = TRUE ORDER BY RANDOM() LIMIT 1';
-        $result = $conn->executeQuery($sql);
-        $row = $result->fetchAssociative();
-        
-        if (!$row) {
-            return null;
-        }
-        
-        $room = $this->find($row['id']);
-        if ($room) {
-            $room->acquire();
+        $sql = 'UPDATE room SET is_available = FALSE, last_used_at = NOW()
+                WHERE is_available = TRUE AND id = (
+                    SELECT id FROM room WHERE is_available = TRUE
+                    ORDER BY RANDOM() LIMIT 1 FOR UPDATE SKIP LOCKED
+                )
+                RETURNING id';
+
+        // A room taken by another transaction between the snapshot and the
+        // lock leaves the subquery empty: try again a few times.
+        for ($attempt = 0; $attempt < 3; $attempt++) {
+            $id = $conn->executeQuery($sql)->fetchOne();
+            if ($id !== false) {
+                $room = $this->find($id);
+                $room?->acquire();
+
+                return $room;
+            }
+            if ($this->countAvailable() === 0) {
+                return null;
+            }
         }
 
-        return $room;
+        return null;
+    }
+
+    /**
+     * Rooms in use whose last activity is older than the given date.
+     *
+     * @return Room[]
+     */
+    public function findStaleRooms(\DateTimeImmutable $olderThan): array
+    {
+        return $this->createQueryBuilder('r')
+            ->where('r.isAvailable = false')
+            ->andWhere('r.lastUsedAt IS NULL OR r.lastUsedAt < :olderThan')
+            ->setParameter('olderThan', $olderThan)
+            ->getQuery()
+            ->getResult();
+    }
+
+    /** @return Room[] */
+    public function findInUse(): array
+    {
+        return $this->findBy(['isAvailable' => false]);
     }
 
     /**
@@ -44,42 +78,5 @@ class RoomRepository extends ServiceEntityRepository
     public function countAvailable(): int
     {
         return $this->count(['isAvailable' => true]);
-    }
-
-    /**
-     * Release a room back to the pool
-     */
-    public function releaseRoom(Room $room): void
-    {
-        $room->release();
-    }
-
-    /**
-     * Release all rooms (make them available again)
-     */
-    public function releaseAll(): int
-    {
-        return $this->createQueryBuilder('r')
-            ->update()
-            ->set('r.isAvailable', 'true')
-            ->set('r.hostTokenHash', 'NULL')
-            ->getQuery()
-            ->execute();
-    }
-
-    /**
-     * Find rooms that have been inactive for a given duration and release them
-     */
-    public function releaseStaleRooms(\DateTimeImmutable $olderThan): int
-    {
-        return $this->createQueryBuilder('r')
-            ->update()
-            ->set('r.isAvailable', 'true')
-            ->set('r.hostTokenHash', 'NULL')
-            ->where('r.isAvailable = false')
-            ->andWhere('r.lastUsedAt < :olderThan')
-            ->setParameter('olderThan', $olderThan)
-            ->getQuery()
-            ->execute();
     }
 }

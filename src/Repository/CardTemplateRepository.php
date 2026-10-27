@@ -18,21 +18,35 @@ class CardTemplateRepository extends ServiceEntityRepository
     }
 
     /**
-     * Get N available card templates and mark them as used
+     * Take N available card templates and mark them as used.
+     *
+     * Like rooms, the pick and the flag change are a single statement with
+     * FOR UPDATE SKIP LOCKED, so two games never share a template. Returns
+     * fewer than N if the pool runs out: the caller must check and roll back.
+     *
+     * @return CardTemplate[]
      */
     public function getAvailableCards(int $count): array
     {
+        if ($count <= 0) {
+            return [];
+        }
+
         $conn = $this->getEntityManager()->getConnection();
-        $sql = 'SELECT id FROM card_template WHERE is_available = TRUE ORDER BY RANDOM() LIMIT :limit';
-        $result = $conn->executeQuery($sql, ['limit' => $count], ['limit' => ParameterType::INTEGER]);
-        $ids = array_column($result->fetchAllAssociative(), 'id');
-        
+        $sql = 'UPDATE card_template SET is_available = FALSE, last_used_at = NOW()
+                WHERE is_available = TRUE AND id IN (
+                    SELECT id FROM card_template WHERE is_available = TRUE
+                    ORDER BY RANDOM() LIMIT :limit FOR UPDATE SKIP LOCKED
+                )
+                RETURNING id';
+        $ids = $conn->executeQuery($sql, ['limit' => $count], ['limit' => ParameterType::INTEGER])->fetchFirstColumn();
+
         if (empty($ids)) {
             return [];
         }
-        
+
         $cards = $this->findBy(['id' => $ids]);
-        
+
         foreach ($cards as $card) {
             $card->markAsUsed();
         }

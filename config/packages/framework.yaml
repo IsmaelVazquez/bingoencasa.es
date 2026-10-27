@@ -3,7 +3,18 @@ framework:
     secret: '%env(APP_SECRET)%'
 
     # Note that the session will be started ONLY if you read or write from it.
-    session: true
+    # Las sesiones van a Postgres (tabla `sessions`): el anfitrión y los jugadores
+    # del Modo Fiesta se identifican solo con ella, y en el sistema de ficheros del
+    # contenedor se perdían en cada despliegue o reinicio.
+    session:
+        handler_id: Symfony\Component\HttpFoundation\Session\Storage\Handler\PdoSessionHandler
+        # 12 horas sin actividad antes de caducar (el valor de PHP son 24 minutos).
+        gc_maxlifetime: 43200
+        gc_probability: 1
+        gc_divisor: 100
+        cookie_secure: auto
+        cookie_samesite: lax
+        cookie_httponly: true
 
     # Trust reverse proxies (Traefik, Plesk, CDN...)
     trusted_proxies: '%env(TRUSTED_PROXIES)%'

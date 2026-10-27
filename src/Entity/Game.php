@@ -2,6 +2,7 @@
 
 namespace App\Entity;
 
+use App\Enum\ClaimStatus;
 use App\Enum\GameStatus;
 use App\Repository\GameRepository;
 use Doctrine\Common\Collections\ArrayCollection;
@@ -101,6 +102,22 @@ class Game
     public function getStatusEnum(): GameStatus
     {
         return GameStatus::tryFrom($this->status) ?? GameStatus::DETENIDA;
+    }
+
+    public function canTransitionTo(GameStatus $next): bool
+    {
+        return $this->getStatusEnum()->canTransitionTo($next);
+    }
+
+    public function hasPendingClaim(): bool
+    {
+        foreach ($this->claims as $claim) {
+            if ($claim->getStatus() === ClaimStatus::PENDIENTE->value) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function setStatus(string|GameStatus $status): static

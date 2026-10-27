@@ -173,7 +173,32 @@ php bin/console doctrine:migrations:migrate
 
 # Generar nueva migracion
 php bin/console make:migration
+
+# Liberar salas sin actividad (por defecto, 12 horas)
+php bin/console app:rooms:release-stale --hours=12
 ```
+
+En producción, `app:rooms:release-stale` va como tarea programada de Coolify
+sobre el servicio `php`, cada hora (`0 * * * *`). Sin ella, una sala que el
+anfitrión abandona se queda ocupada hasta que alguien la libera desde el panel.
+
+Las sesiones se guardan en Postgres (tabla `sessions`), así que un despliegue o
+un reinicio no echa al anfitrión ni a los jugadores de una partida en curso.
+
+## Tests
+
+```bash
+# Una vez: base de datos de test
+docker compose exec -e APP_ENV=test php php bin/console doctrine:database:create --if-not-exists
+docker compose exec -e APP_ENV=test php php bin/console doctrine:migrations:migrate -n
+
+# Lanzar los tests
+docker compose exec -e APP_ENV=test -e XDEBUG_MODE=off php php bin/phpunit
+```
+
+`tests/Concurrency` lanza procesos PHP en paralelo contra Postgres para
+comprobar que dos peticiones a la vez no reparten la misma sala, los mismos
+cartones o la misma bola, ni dejan dos reclamaciones pendientes.
 
 ## Variables de Entorno
 

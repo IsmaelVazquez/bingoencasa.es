@@ -118,10 +118,10 @@ class AdminController extends AbstractController
 
     #[Route('/pool/release-all', name: 'app_admin_pool_release_all', methods: ['POST'])]
     public function releaseAll(
-        RoomRepository $roomRepository,
+        RoomReleaser $roomReleaser,
         CardTemplateRepository $cardTemplateRepository,
     ): JsonResponse {
-        $roomsReleased = $roomRepository->releaseAll();
+        $roomsReleased = $roomReleaser->releaseAll();
         $cardsReleased = $cardTemplateRepository->releaseAll();
 
         return $this->json([
@@ -135,12 +135,12 @@ class AdminController extends AbstractController
     #[Route('/pool/release-stale', name: 'app_admin_pool_release_stale', methods: ['POST'])]
     public function releaseStale(
         Request $request,
-        RoomRepository $roomRepository,
+        RoomReleaser $roomReleaser,
     ): JsonResponse {
         $hours = max(1, (int) ($request->request->get('hours') ?? 24));
         $olderThan = new \DateTimeImmutable("-{$hours} hours");
-        
-        $roomsReleased = $roomRepository->releaseStaleRooms($olderThan);
+
+        $roomsReleased = $roomReleaser->releaseStale($olderThan);
 
         return $this->json([
             'exito' => true,

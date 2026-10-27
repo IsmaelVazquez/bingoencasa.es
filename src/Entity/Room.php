@@ -237,11 +237,10 @@ class Room
         return $this;
     }
 
-    public function release(): static
+    /** Marca actividad en la sala, para que la limpieza de salas abandonadas no la libere. */
+    public function touch(): static
     {
-        $this->isAvailable = true;
-        $this->hostTokenHash = null;
-        $this->players->clear();
+        $this->lastUsedAt = new \DateTimeImmutable();
         return $this;
     }
 }

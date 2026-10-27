@@ -8,6 +8,25 @@ Las entradas están escritas para el cliente: en lenguaje natural y sin detalles
 
 ---
 
+## [v1.01.10] - 2026-10-26
+
+### Corregido
+
+- En el Modo Fiesta, dos anfitriones que abren sala a la vez ya no pueden recibir la misma sala, y dos partidas a la vez ya no pueden repartir los mismos cartones.
+- Pulsar dos veces "sacar bola" ya no puede sacar la misma bola dos veces.
+- Si varios jugadores cantan a la vez, solo queda en revisión el primer canto; los demás reciben el aviso de esperar.
+- Dos invitados que entran a la vez ya no pueden coger el mismo apodo ni pasarse del máximo de jugadores de la sala.
+- Una partida terminada ya no se puede volver a arrancar, y no se puede cantar antes de que empiece. Rechazar un canto ya no arranca una partida que estaba parada.
+- Las bolas ya no salen desordenadas en el historial cuando se sacan dos en el mismo segundo.
+- Al liberar una sala, desde el panel o al terminar, se borran sus jugadores y su última partida. El siguiente anfitrión la recibe vacía y los jugadores antiguos ya no pueden verla.
+- Liberar una sala ya no devuelve al pool cartones que está usando otra sala.
+- La limpieza de salas inactivas ya no libera salas con una partida en marcha: cuenta la última actividad y no la hora en que se abrió la sala.
+
+### Mejorado
+
+- El anfitrión y los jugadores ya no se quedan fuera de la partida cuando se publica una versión nueva o se reinicia el servidor. Además, la sesión aguanta 12 horas sin actividad, antes solo 24 minutos.
+- Las salas abandonadas se pueden liberar solas con una tarea programada.
+
 ## [v1.01.09] - 2026-10-26
 
 ### Eliminado

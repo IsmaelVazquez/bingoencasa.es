@@ -7,6 +7,7 @@ use Doctrine\ORM\Mapping as ORM;
 use Symfony\Component\Uid\Ulid;
 
 #[ORM\Entity(repositoryClass: DrawRepository::class)]
+#[ORM\UniqueConstraint(name: 'uniq_draw_game_number', columns: ['game_id', 'number'])]
 class Draw
 {
     #[ORM\Id]

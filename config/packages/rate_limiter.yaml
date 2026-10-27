@@ -11,3 +11,17 @@ framework:
             policy: sliding_window
             limit: 10
             interval: '15 minutes'
+
+# En los tests cada petición empieza de cero: si no, los tests de ayer
+# agotan el cupo de salas de hoy.
+when@test:
+    framework:
+        cache:
+            pools:
+                test.rate_limiter_pool:
+                    adapter: cache.adapter.array
+        rate_limiter:
+            fiesta_crear_sala:
+                cache_pool: test.rate_limiter_pool
+            fiesta_pin_fallido:
+                cache_pool: test.rate_limiter_pool
