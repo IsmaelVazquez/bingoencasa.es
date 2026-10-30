@@ -37,6 +37,14 @@ services:
             APP_SECRET: "${APP_SECRET:?APP_SECRET must be set}"
             DATABASE_URL: "${DATABASE_URL:?DATABASE_URL must be set}"
             TRUSTED_PROXIES: PRIVATE_SUBNETS
+        # php-fpm habla FastCGI, no HTTP: solo se comprueba que el pool
+        # escucha. El entrypoint migra y calienta la caché antes de arrancarlo.
+        healthcheck:
+            test: ["CMD", "php", "-r", "exit(@fsockopen('127.0.0.1', 9000) ? 0 : 1);"]
+            interval: 30s
+            timeout: 5s
+            retries: 3
+            start_period: 90s
         restart: unless-stopped
 
 networks:

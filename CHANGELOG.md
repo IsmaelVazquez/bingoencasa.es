@@ -8,6 +8,12 @@ Las entradas están escritas para el cliente: en lenguaje natural y sin detalles
 
 ---
 
+## [v1.03.02] - 2026-10-30
+
+### Mantenimiento
+
+- El servidor vigila que la parte que procesa las partidas sigue respondiendo y avisa si deja de hacerlo. El juego no cambia.
+
 ## [v1.03.01] - 2026-10-27
 
 ### Seguridad
